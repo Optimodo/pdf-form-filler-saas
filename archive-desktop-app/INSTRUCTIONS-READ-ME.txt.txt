@@ -1,0 +1,22 @@
+PDF Form Filler - Quick Start Instructions
+=========================================
+
+1. Copy and extract the entire ZIP file to a folder on your local computer.
+   (Do NOT run the program directly from the cloud or a network drive.)
+
+2. Open the extracted folder and double-click on:
+   PDF_Form_Filler_vX.Y.Z.exe
+   (where X.Y.Z is the version number)
+
+3. Follow the on-screen instructions to select your PDF template and CSV data file.
+
+4. Choose an output location if desired, then click 'Process PDFs' to generate your filled forms.
+
+5. For more detailed instructions and advanced features, please refer to the full manual included in this package.
+
+------------------------------------------------------------
+
+Contact:
+  Mike McLean
+  Malcolm Building Services
+  Email: mike.mclean@malcolmbuildingservices.co.uk 
