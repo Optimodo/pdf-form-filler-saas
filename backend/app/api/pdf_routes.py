@@ -6,14 +6,17 @@ Provides endpoints for PDF form filling using the proven desktop logic.
 import os
 import tempfile
 import logging
+import zipfile
+import shutil
 from typing import List, Optional
 from pathlib import Path
+from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 import aiofiles
 
-from ..core.pdf_processor import process_pdf_batch, PDFProcessor
+from ..core.pdf_processor import process_pdf_batch
 
 router = APIRouter(prefix="/api/pdf", tags=["PDF Processing"])
 
@@ -67,14 +70,33 @@ async def process_pdf_batch_endpoint(
         logger.info(f"Starting PDF batch processing: {template.filename} with {csv_data.filename}")
         result = process_pdf_batch(template_path, csv_path, output_dir)
         
-        if result["success"]:
+        if result["success"] and result["successful_count"] > 0:
             # List generated files
             generated_files = []
             if os.path.exists(output_dir):
                 generated_files = [f for f in os.listdir(output_dir) if f.endswith('.pdf')]
             
-            result["generated_files"] = generated_files
-            result["output_directory"] = output_dir  # For potential file downloads
+            if generated_files:
+                # Create ZIP file containing all generated PDFs
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                zip_filename = f"generated_pdfs_{timestamp}.zip"
+                zip_path = os.path.join(temp_dir, zip_filename)
+                
+                try:
+                    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                        for filename in generated_files:
+                            file_path = os.path.join(output_dir, filename)
+                            zipf.write(file_path, filename)
+                    
+                    result["zip_file"] = zip_filename
+                    result["zip_path"] = zip_path
+                    result["generated_files"] = generated_files
+                    
+                    logger.info(f"Created ZIP file: {zip_filename} with {len(generated_files)} PDFs")
+                    
+                except Exception as zip_error:
+                    logger.error(f"Failed to create ZIP file: {zip_error}")
+                    result["zip_error"] = str(zip_error)
             
             logger.info(f"Batch processing completed: {result['successful_count']} of {result['total_count']} PDFs")
             
@@ -152,13 +174,8 @@ async def get_template_info(category: str, template_name: str):
         # Get template info
         csv_files = list(template_path.parent.glob(f"{template_name}*.csv"))
         
-        # Try to read PDF fields using our processor
-        try:
-            processor = PDFProcessor(str(template_path))
-            # This would need additional method to extract field info
-            # For now, just return basic info
-        except Exception as e:
-            logger.warning(f"Could not analyze PDF fields: {e}")
+        # For now, just return basic info
+        # TODO: Add PDF field analysis later
         
         return {
             "name": template_name,
@@ -176,32 +193,45 @@ async def get_template_info(category: str, template_name: str):
         raise HTTPException(status_code=500, detail=f"Failed to get template info: {str(e)}")
 
 
-@router.get("/download/{output_directory}/{filename}")
-async def download_generated_pdf(output_directory: str, filename: str):
+@router.get("/download-zip/{zip_filename}")
+async def download_generated_zip(zip_filename: str):
     """
-    Download a generated PDF file.
+    Download a ZIP file containing all generated PDFs.
     
-    Note: In production, you'd want better security and cleanup policies.
+    This provides a single download for all processed PDFs.
     """
     try:
-        # Validate filename for security
-        if '..' in filename or '/' in filename or '\\' in filename:
+        # Basic filename validation for security
+        if '..' in zip_filename or '/' in zip_filename or '\\' in zip_filename:
             raise HTTPException(status_code=400, detail="Invalid filename")
         
-        file_path = Path(output_directory) / filename
+        if not zip_filename.endswith('.zip'):
+            raise HTTPException(status_code=400, detail="Invalid file type")
         
-        if not file_path.exists() or not file_path.suffix.lower() == '.pdf':
-            raise HTTPException(status_code=404, detail="File not found")
+        # Look for the ZIP file in temporary directories
+        # Note: In production, you'd have a more sophisticated file management system
+        temp_dirs = [d for d in os.listdir('/tmp') if d.startswith('tmp') and os.path.isdir(os.path.join('/tmp', d))]
         
+        zip_path = None
+        for temp_dir in temp_dirs:
+            potential_path = os.path.join('/tmp', temp_dir, zip_filename)
+            if os.path.exists(potential_path):
+                zip_path = potential_path
+                break
+        
+        if not zip_path or not os.path.exists(zip_path):
+            raise HTTPException(status_code=404, detail="ZIP file not found or expired")
+        
+        # Return the ZIP file
         return FileResponse(
-            path=str(file_path),
-            filename=filename,
-            media_type='application/pdf'
+            path=zip_path,
+            filename=zip_filename,
+            media_type='application/zip'
         )
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error downloading file: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Download failed: {str(e)}")
+        logger.error(f"Error downloading ZIP file: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"ZIP download failed: {str(e)}")
 

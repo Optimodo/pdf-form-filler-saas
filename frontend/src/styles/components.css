@@ -1,0 +1,433 @@
+/* Component Styles */
+
+/* Header */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 2rem;
+  background-color: var(--color-bg-secondary);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  font-size: 1.25rem;
+}
+
+.logo-icon {
+  font-size: 1.5rem;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* User Info */
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background-color: var(--color-bg-tertiary);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.user-avatar {
+  font-size: 1rem;
+}
+
+/* Theme Toggle */
+.theme-toggle {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: var(--transition);
+  background-color: var(--color-bg-tertiary);
+}
+
+.theme-toggle:hover {
+  border-color: var(--color-border-hover);
+  background-color: var(--color-bg-primary);
+}
+
+/* File Dropzone */
+.file-dropzone {
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: var(--transition);
+  background-color: var(--color-bg-secondary);
+  margin-bottom: 1.5rem;
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.file-dropzone:hover {
+  border-color: var(--color-accent);
+  background-color: var(--color-bg-tertiary);
+}
+
+.file-dropzone.drag-over {
+  border-color: var(--color-accent);
+  background-color: var(--color-accent);
+  color: white;
+}
+
+.file-dropzone.has-file {
+  border-color: var(--color-success);
+  background-color: var(--color-bg-tertiary);
+}
+
+.dropzone-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.dropzone-icon {
+  font-size: 2rem;
+  opacity: 0.7;
+}
+
+.primary-text {
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.secondary-text {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.file-selected .file-name {
+  font-weight: 500;
+  color: var(--color-success);
+}
+
+.file-selected .file-size {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+/* Progress Bar */
+.progress-container {
+  margin: 2rem 0;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background-color: var(--color-bg-tertiary);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+
+.progress-fill {
+  height: 100%;
+  background-color: var(--color-accent);
+  transition: width 0.3s ease-in-out;
+}
+
+.progress-text {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+/* Ad Banner */
+.ad-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 1rem 0;
+}
+
+.ad-banner-medium {
+  width: 300px;
+  height: 100px;
+}
+
+.ad-placeholder {
+  width: 100%;
+  height: 100%;
+  background-color: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+/* Main Layout */
+.main-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.ads-top {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+}
+
+.ads-bottom {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2rem;
+}
+
+/* Primary Button */
+.btn-primary {
+  background-color: var(--color-accent);
+  color: white;
+  border: none;
+  padding: 0.75rem 2rem;
+  border-radius: var(--radius-md);
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+  box-shadow: var(--shadow-sm);
+  margin: 2rem 0;
+}
+
+.btn-primary:hover {
+  background-color: var(--color-accent-hover);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Results Display */
+.results-container {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background-color: var(--color-bg-secondary);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+}
+
+.results-summary h3 {
+  color: var(--color-success);
+  margin: 0 0 0.5rem 0;
+}
+
+.results-summary p {
+  color: var(--color-text-secondary);
+  margin: 0 0 1rem 0;
+}
+
+.generated-files h4 {
+  margin: 1rem 0 0.5rem 0;
+  color: var(--color-text-primary);
+}
+
+/* File Preview (not downloadable individually) */
+.file-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 0.5rem;
+  background-color: var(--color-bg-tertiary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.file-preview-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background-color: var(--color-bg-primary);
+  border-radius: var(--radius-sm);
+}
+
+.file-icon {
+  font-size: 1rem;
+  opacity: 0.7;
+}
+
+.file-name {
+  color: var(--color-text-primary);
+  font-size: 0.875rem;
+  flex: 1;
+}
+
+/* ZIP Download Section */
+.download-section {
+  margin-top: 1.5rem;
+  text-align: center;
+  padding: 1rem;
+  background-color: var(--color-bg-tertiary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.btn-download-zip {
+  background-color: var(--color-accent);
+  color: white;
+  border: none;
+  padding: 1rem 2rem;
+  border-radius: var(--radius-lg);
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-download-zip:hover {
+  background-color: var(--color-accent-hover);
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-1px);
+}
+
+.download-info {
+  margin: 0.75rem 0 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+/* ZIP Error Display */
+.zip-error {
+  margin-top: 1rem;
+  padding: 1rem;
+  background-color: rgba(239, 68, 68, 0.05);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-md);
+}
+
+.error-text {
+  color: var(--color-error);
+  font-weight: 500;
+  margin: 0 0 0.5rem 0;
+}
+
+.error-help {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.errors-section {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.errors-section h4 {
+  color: var(--color-error);
+  margin: 0 0 0.5rem 0;
+}
+
+.error-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.error-item {
+  padding: 0.5rem;
+  background-color: rgba(239, 68, 68, 0.1);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-sm);
+  color: var(--color-error);
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+}
+
+/* Status Messages */
+.status-message {
+  margin: 1rem 0;
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.status-success {
+  background-color: rgba(16, 185, 129, 0.1);
+  border: 1px solid var(--color-success);
+  color: var(--color-success);
+}
+
+.status-error {
+  background-color: rgba(239, 68, 68, 0.1);
+  border: 1px solid var(--color-error);
+  color: var(--color-error);
+}
+
+.status-processing {
+  background-color: rgba(59, 130, 246, 0.1);
+  border: 1px solid var(--color-accent);
+  color: var(--color-accent);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .header {
+    padding: 1rem;
+  }
+  
+  .main-container {
+    padding: 1rem;
+  }
+  
+  .ads-top,
+  .ads-bottom {
+    flex-direction: column;
+    gap: 1rem;
+  }
+  
+  .ad-banner-medium {
+    width: 100%;
+    max-width: 300px;
+    margin: 0 auto;
+  }
+  
+  .user-info {
+    font-size: 0.75rem;
+  }
+
+  .file-preview {
+    max-height: 150px;
+  }
+  
+  .btn-download-zip {
+    padding: 0.875rem 1.5rem;
+    font-size: 1rem;
+  }
+}
