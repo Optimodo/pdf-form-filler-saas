@@ -1,14 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { AuthProvider } from './contexts/AuthContext';
 import Header from './components/Layout/Header';
 import FileDropzone from './components/Upload/FileDropzone';
 import ProgressBar from './components/Processing/ProgressBar';
 import ResultsDisplay from './components/Processing/ResultsDisplay';
 import AdBanner from './components/Ads/AdBanner';
+import GoogleCallback from './components/Auth/GoogleCallback';
 import APIService from './services/api';
 import './styles/themes.css';
 import './styles/components.css';
 
 function App() {
+  const [currentRoute, setCurrentRoute] = useState('/');
   const [pdfFile, setPdfFile] = useState(null);
   const [csvFile, setCsvFile] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -16,6 +19,20 @@ function App() {
   const [status, setStatus] = useState('');
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
+
+  // Simple routing based on URL path
+  useEffect(() => {
+    const path = window.location.pathname;
+    setCurrentRoute(path);
+    
+    // Listen for route changes
+    const handlePopState = () => {
+      setCurrentRoute(window.location.pathname);
+    };
+    
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   const handlePdfSelect = (file) => {
     setPdfFile(file);
@@ -162,35 +179,53 @@ function App() {
 
   const canGenerate = pdfFile && csvFile && !isProcessing;
 
+  // Handle Google OAuth callback route
+  if (currentRoute.startsWith('/auth/google/callback')) {
+    return (
+      <AuthProvider>
+        <div className="app">
+          <Header />
+          <main className="main-container">
+            <GoogleCallback />
+          </main>
+        </div>
+      </AuthProvider>
+    );
+  }
+
+  // Main application route
   return (
-    <div className="app">
-      <Header />
-      
-      <main className="main-container">
+    <AuthProvider>
+      <div className="app">
+        <Header />
+        
+        <main className="main-container">
         {/* Top Ad Banners */}
         <div className="ads-top">
           <AdBanner size="medium" position="top-left" />
           <AdBanner size="medium" position="top-right" />
         </div>
 
-        {/* Main Upload Interface */}
-        <div className="upload-section">
-          <FileDropzone
-            title="Drop PDF Template Here"
-            icon="📄"
-            acceptedTypes=".pdf"
-            onFileSelect={handlePdfSelect}
-            className="pdf-upload"
-          />
+                {/* Main Upload Interface */}
+                <div className="upload-section">
+                  <FileDropzone
+                    title="Drop PDF Template Here"
+                    icon="📄"
+                    acceptedTypes=".pdf"
+                    onFileSelect={handlePdfSelect}
+                    className="pdf-upload"
+                    fileType="pdf"
+                  />
 
-          <FileDropzone
-            title="Drop CSV Data Here"
-            icon="📊"
-            acceptedTypes=".csv"
-            onFileSelect={handleCsvSelect}
-            className="csv-upload"
-          />
-        </div>
+                  <FileDropzone
+                    title="Drop CSV Data Here"
+                    icon="📊"
+                    acceptedTypes=".csv"
+                    onFileSelect={handleCsvSelect}
+                    className="csv-upload"
+                    fileType="csv"
+                  />
+                </div>
 
         {/* Generate Button */}
         <div style={{ textAlign: 'center' }}>
@@ -229,7 +264,8 @@ function App() {
           <AdBanner size="medium" position="bottom-right" />
         </div>
       </main>
-    </div>
+      </div>
+    </AuthProvider>
   );
 }
 

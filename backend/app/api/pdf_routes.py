@@ -13,12 +13,15 @@ from typing import List, Optional
 from pathlib import Path
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends, Header
 from fastapi.responses import FileResponse, StreamingResponse
 import aiofiles
 
 from ..core.pdf_processor import process_pdf_batch
 from ..core.progress_tracker import progress_tracker
+from ..core.user_limits import get_user_limits_from_user, get_anonymous_user_limits, validate_file_size
+from ..auth import current_active_user
+from ..models import User
 
 router = APIRouter(prefix="/api/pdf", tags=["PDF Processing"])
 
@@ -27,17 +30,44 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+async def get_optional_current_user(
+    authorization: Optional[str] = Header(None)
+) -> Optional[User]:
+    """
+    Optional authentication dependency - returns User if authenticated, None if not.
+    This allows endpoints to work for both authenticated and anonymous users.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    
+    try:
+        # Extract token and validate
+        from ..auth import fastapi_users, auth_backend
+        strategy = auth_backend.get_strategy()
+        token = authorization.replace("Bearer ", "")
+        user = await strategy.read_token(token, None)
+        if user and user.is_active:
+            return user
+    except Exception:
+        pass
+    
+    return None
+
+
 @router.post("/process-batch")
 async def process_pdf_batch_endpoint(
     template: UploadFile = File(..., description="PDF template file"),
     csv_data: UploadFile = File(..., description="CSV data file"),
-    output_name: Optional[str] = Form(None, description="Custom output directory name")
+    output_name: Optional[str] = Form(None, description="Custom output directory name"),
+    current_user: Optional[User] = Depends(get_optional_current_user)
 ):
     """
     Process a batch of PDFs using template and CSV data.
     
     This endpoint uses the exact same logic as the desktop application
     to ensure consistent, compatible PDF output.
+    
+    File size limits are enforced based on user subscription tier.
     """
     temp_dir = None
     try:
@@ -47,6 +77,30 @@ async def process_pdf_batch_endpoint(
         
         if not csv_data.filename.lower().endswith('.csv'):
             raise HTTPException(status_code=400, detail="Data file must be a CSV file")
+        
+        # Determine user limits based on authentication status
+        if current_user:
+            user_limits = get_user_limits_from_user(current_user)
+            if current_user.custom_limits_enabled:
+                user_type = f"authenticated user ({current_user.subscription_tier} tier + custom limits)"
+            else:
+                user_type = f"authenticated user ({current_user.subscription_tier} tier)"
+        else:
+            user_limits = get_anonymous_user_limits()
+            user_type = "anonymous user"
+        
+        logger.info(f"Processing request for {user_type}")
+        
+        # Validate file sizes
+        if template.size:
+            is_valid, error_msg = validate_file_size(template.size, user_limits.max_pdf_size, "PDF template")
+            if not is_valid:
+                raise HTTPException(status_code=413, detail=error_msg)
+        
+        if csv_data.size:
+            is_valid, error_msg = validate_file_size(csv_data.size, user_limits.max_csv_size, "CSV data")
+            if not is_valid:
+                raise HTTPException(status_code=413, detail=error_msg)
         
         # Create temporary directory for processing
         temp_dir = tempfile.mkdtemp()
@@ -115,6 +169,9 @@ async def process_pdf_batch_endpoint(
             
         return result
         
+    except HTTPException:
+        # Re-raise HTTP exceptions (like file size errors) without modification
+        raise
     except Exception as e:
         logger.error(f"Error in batch processing: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
@@ -125,85 +182,6 @@ async def process_pdf_batch_endpoint(
         pass
 
 
-@router.get("/templates")
-async def list_available_templates():
-    """
-    List available PDF templates.
-    
-    Returns templates from the backend/templates directory.
-    """
-    try:
-        templates_dir = Path(__file__).parent.parent.parent / "templates"
-        templates = []
-        
-        if templates_dir.exists():
-            for category_dir in templates_dir.iterdir():
-                if category_dir.is_dir():
-                    category_templates = []
-                    for file in category_dir.iterdir():
-                        if file.suffix.lower() == '.pdf':
-                            # Look for corresponding CSV file
-                            csv_files = list(category_dir.glob(f"{file.stem}*.csv"))
-                            
-                            template_info = {
-                                "name": file.stem,
-                                "filename": file.name,
-                                "path": str(file),
-                                "category": category_dir.name,
-                                "has_sample_data": len(csv_files) > 0,
-                                "sample_csv": csv_files[0].name if csv_files else None
-                            }
-                            category_templates.append(template_info)
-                    
-                    if category_templates:
-                        templates.append({
-                            "category": category_dir.name,
-                            "templates": category_templates
-                        })
-        
-        return {
-            "templates": templates,
-            "total_categories": len(templates),
-            "total_templates": sum(len(cat["templates"]) for cat in templates)
-        }
-        
-    except Exception as e:
-        logger.error(f"Error listing templates: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to list templates: {str(e)}")
-
-
-@router.get("/templates/{category}/{template_name}")
-async def get_template_info(category: str, template_name: str):
-    """
-    Get detailed information about a specific template.
-    """
-    try:
-        templates_dir = Path(__file__).parent.parent.parent / "templates"
-        template_path = templates_dir / category / f"{template_name}.pdf"
-        
-        if not template_path.exists():
-            raise HTTPException(status_code=404, detail="Template not found")
-        
-        # Get template info
-        csv_files = list(template_path.parent.glob(f"{template_name}*.csv"))
-        
-        # For now, just return basic info
-        # TODO: Add PDF field analysis later
-        
-        return {
-            "name": template_name,
-            "category": category,
-            "path": str(template_path),
-            "size": template_path.stat().st_size,
-            "has_sample_data": len(csv_files) > 0,
-            "sample_csv_files": [f.name for f in csv_files]
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting template info: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get template info: {str(e)}")
 
 
 @router.get("/download-zip/{zip_filename}")
@@ -247,6 +225,50 @@ async def download_generated_zip(zip_filename: str):
     except Exception as e:
         logger.error(f"Error downloading ZIP file: {str(e)}")
         raise HTTPException(status_code=500, detail=f"ZIP download failed: {str(e)}")
+
+
+@router.get("/user-limits")
+async def get_user_limits_endpoint(
+    current_user: Optional[User] = Depends(get_optional_current_user)
+):
+    """
+    Get the file size limits and other restrictions for the current user.
+    
+    Returns limits based on subscription tier for authenticated users,
+    or anonymous user limits for unauthenticated requests.
+    """
+    try:
+        if current_user:
+            limits = get_user_limits_from_user(current_user)
+            tier = current_user.subscription_tier
+            has_custom_limits = current_user.custom_limits_enabled
+        else:
+            limits = get_anonymous_user_limits()
+            tier = "anonymous"
+            has_custom_limits = False
+        
+        from ..core.user_limits import format_file_size
+        
+        return {
+            "subscription_tier": tier,
+            "has_custom_limits": has_custom_limits,
+            "max_pdf_size_bytes": limits.max_pdf_size,
+            "max_csv_size_bytes": limits.max_csv_size,
+            "max_pdf_size_display": format_file_size(limits.max_pdf_size),
+            "max_csv_size_display": format_file_size(limits.max_csv_size),
+            "max_daily_jobs": limits.max_daily_jobs,
+            "max_monthly_jobs": limits.max_monthly_jobs,
+            "max_files_per_job": limits.max_files_per_job,
+            "can_save_templates": limits.can_save_templates,
+            "can_use_api": limits.can_use_api,
+            "priority_processing": limits.priority_processing,
+            "max_saved_templates": limits.max_saved_templates,
+            "max_total_storage_mb": limits.max_total_storage_mb,
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting user limits: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get user limits: {str(e)}")
 
 
 @router.get("/progress/{job_id}")

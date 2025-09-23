@@ -86,24 +86,6 @@ class APIService {
     return processingPromise;
   }
 
-  /**
-   * Get list of available templates
-   * @returns {Promise} - List of templates
-   */
-  async getTemplates() {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/pdf/templates`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      return await response.json();
-    } catch (error) {
-      console.error('API Error:', error);
-      throw error;
-    }
-  }
 
   /**
    * Download a ZIP file containing all generated PDFs
@@ -147,6 +129,182 @@ class APIService {
       return await response.json();
     } catch (error) {
       console.error('Health Check Error:', error);
+      throw error;
+    }
+  }
+
+  // Authentication methods
+  
+  /**
+   * Register a new user
+   * @param {Object} userData - User registration data
+   * @returns {Promise} - Registration response
+   */
+  async register(userData) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(userData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `Registration failed: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Registration Error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Login with email and password
+   * @param {string} email - User email
+   * @param {string} password - User password
+   * @returns {Promise} - Login response with token
+   */
+  async login(email, password) {
+    try {
+      const formData = new FormData();
+      formData.append('username', email); // FastAPI-Users expects 'username' field
+      formData.append('password', password);
+
+      const response = await fetch(`${API_BASE_URL}/api/auth/jwt/login`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Login failed');
+      }
+
+      const data = await response.json();
+      
+      // Store token in localStorage
+      localStorage.setItem('access_token', data.access_token);
+      localStorage.setItem('token_type', data.token_type);
+      
+      return data;
+    } catch (error) {
+      console.error('Login Error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Logout user
+   * @returns {Promise} - Logout response
+   */
+  async logout() {
+    try {
+      const token = localStorage.getItem('access_token');
+      
+      if (token) {
+        await fetch(`${API_BASE_URL}/api/auth/jwt/logout`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+      }
+      
+      // Clear stored tokens
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('token_type');
+      
+    } catch (error) {
+      console.error('Logout Error:', error);
+      // Clear tokens even if API call fails
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('token_type');
+    }
+  }
+
+  /**
+   * Get current user info
+   * @returns {Promise} - Current user data
+   */
+  async getCurrentUser() {
+    try {
+      const token = localStorage.getItem('access_token');
+      
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          // Token expired or invalid
+          this.logout();
+          throw new Error('Session expired');
+        }
+        throw new Error(`Failed to get user info: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Get Current User Error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if user is authenticated
+   * @returns {boolean} - Authentication status
+   */
+  isAuthenticated() {
+    const token = localStorage.getItem('access_token');
+    return !!token;
+  }
+
+  /**
+   * Get authorization header for API requests
+   * @returns {Object} - Authorization headers
+   */
+  getAuthHeaders() {
+    const token = localStorage.getItem('access_token');
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
+  }
+
+  /**
+   * Start Google OAuth flow
+   * @returns {string} - Google OAuth URL
+   */
+  getGoogleOAuthUrl() {
+    return `${API_BASE_URL}/api/auth/google/authorize`;
+  }
+
+  /**
+   * Get current user's file size limits and restrictions
+   * @returns {Promise} - User limits data
+   */
+  async getUserLimits() {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/pdf/user-limits`, {
+        headers: {
+          ...this.getAuthHeaders(),
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to get user limits: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Get User Limits Error:', error);
       throw error;
     }
   }

@@ -1,11 +1,13 @@
 import React, { useState, useCallback } from 'react';
+import FileLimitNote from './FileLimitNote';
 
 const FileDropzone = ({ 
   title, 
   icon, 
   acceptedTypes, 
   onFileSelect, 
-  className = '' 
+  className = '',
+  fileType = ''
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
@@ -45,37 +47,41 @@ const FileDropzone = ({
   };
 
   return (
-    <div 
-      className={`file-dropzone ${className} ${isDragOver ? 'drag-over' : ''} ${selectedFile ? 'has-file' : ''}`}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-      onClick={handleClick}
-    >
-      <div className="dropzone-content">
-        <div className="dropzone-icon">{icon}</div>
-        <div className="dropzone-text">
-          {selectedFile ? (
-            <div className="file-selected">
-              <div className="file-name">{selectedFile.name}</div>
-              <div className="file-size">{(selectedFile.size / 1024).toFixed(1)} KB</div>
-            </div>
-          ) : (
-            <div className="file-prompt">
-              <div className="primary-text">{title}</div>
-              <div className="secondary-text">or click to browse</div>
-            </div>
-          )}
+    <div className="file-dropzone-container">
+      <div 
+        className={`file-dropzone ${className} ${isDragOver ? 'drag-over' : ''} ${selectedFile ? 'has-file' : ''}`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onClick={handleClick}
+      >
+        <div className="dropzone-content">
+          <div className="dropzone-icon">{icon}</div>
+          <div className="dropzone-text">
+            {selectedFile ? (
+              <div className="file-selected">
+                <div className="file-name">{selectedFile.name}</div>
+                <div className="file-size">{(selectedFile.size / 1024).toFixed(1)} KB</div>
+              </div>
+            ) : (
+              <div className="file-prompt">
+                <div className="primary-text">{title}</div>
+                <div className="secondary-text">or click to browse</div>
+              </div>
+            )}
+          </div>
         </div>
+        
+        <input
+          id={`file-input-${title.replace(/\s+/g, '-')}`}
+          type="file"
+          accept={acceptedTypes}
+          onChange={handleFileInputChange}
+          style={{ display: 'none' }}
+        />
       </div>
       
-      <input
-        id={`file-input-${title.replace(/\s+/g, '-')}`}
-        type="file"
-        accept={acceptedTypes}
-        onChange={handleFileInputChange}
-        style={{ display: 'none' }}
-      />
+      {fileType && <FileLimitNote fileType={fileType} />}
     </div>
   );
 };
