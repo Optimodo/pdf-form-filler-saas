@@ -8,6 +8,7 @@ import tempfile
 import logging
 import zipfile
 import shutil
+import time
 from typing import List, Optional
 from pathlib import Path
 from datetime import datetime
@@ -17,6 +18,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 import aiofiles
 
 from ..core.pdf_processor import process_pdf_batch
+from ..core.progress_tracker import progress_tracker
 
 router = APIRouter(prefix="/api/pdf", tags=["PDF Processing"])
 
@@ -63,12 +65,24 @@ async def process_pdf_batch_endpoint(
             content = await csv_data.read()
             await f.write(content)
         
-        # Set output directory
-        output_dir = os.path.join(temp_dir, output_name or "output")
+        # Set output directory - use mounted volume for accessibility
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        session_dir = f"session_{timestamp}"
+        output_dir = os.path.join("/app/outputs", session_dir)
+        os.makedirs(output_dir, exist_ok=True)
         
         # Process PDFs using the proven desktop logic
         logger.info(f"Starting PDF batch processing: {template.filename} with {csv_data.filename}")
+        
+        # Track processing start time
+        processing_start = time.time()
         result = process_pdf_batch(template_path, csv_path, output_dir)
+        processing_time = time.time() - processing_start
+        
+        # Add timing information to result
+        result["processing_time"] = processing_time
+        if result.get("total_count", 0) > 0:
+            result["avg_time_per_file"] = processing_time / result["total_count"]
         
         if result["success"] and result["successful_count"] > 0:
             # List generated files
@@ -78,9 +92,8 @@ async def process_pdf_batch_endpoint(
             
             if generated_files:
                 # Create ZIP file containing all generated PDFs
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 zip_filename = f"generated_pdfs_{timestamp}.zip"
-                zip_path = os.path.join(temp_dir, zip_filename)
+                zip_path = os.path.join(output_dir, zip_filename)
                 
                 try:
                     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
@@ -208,13 +221,13 @@ async def download_generated_zip(zip_filename: str):
         if not zip_filename.endswith('.zip'):
             raise HTTPException(status_code=400, detail="Invalid file type")
         
-        # Look for the ZIP file in temporary directories
-        # Note: In production, you'd have a more sophisticated file management system
-        temp_dirs = [d for d in os.listdir('/tmp') if d.startswith('tmp') and os.path.isdir(os.path.join('/tmp', d))]
+        # Look for the ZIP file in output directories
+        outputs_base = "/app/outputs"
+        session_dirs = [d for d in os.listdir(outputs_base) if d.startswith('session_') and os.path.isdir(os.path.join(outputs_base, d))]
         
         zip_path = None
-        for temp_dir in temp_dirs:
-            potential_path = os.path.join('/tmp', temp_dir, zip_filename)
+        for session_dir in session_dirs:
+            potential_path = os.path.join(outputs_base, session_dir, zip_filename)
             if os.path.exists(potential_path):
                 zip_path = potential_path
                 break
@@ -234,4 +247,38 @@ async def download_generated_zip(zip_filename: str):
     except Exception as e:
         logger.error(f"Error downloading ZIP file: {str(e)}")
         raise HTTPException(status_code=500, detail=f"ZIP download failed: {str(e)}")
+
+
+@router.get("/progress/{job_id}")
+async def get_processing_progress(job_id: str):
+    """
+    Get the current progress of a PDF processing job.
+    
+    Returns real-time progress information including:
+    - Current file being processed
+    - Progress percentage
+    - Time estimates
+    - Success/error counts
+    """
+    try:
+        progress_data = progress_tracker.get_progress(job_id)
+        
+        if not progress_data:
+            raise HTTPException(status_code=404, detail="Job not found")
+        
+        # Format time estimates for better display
+        if progress_data.get('estimated_remaining'):
+            remaining_seconds = progress_data['estimated_remaining']
+            if remaining_seconds > 60:
+                progress_data['estimated_remaining_display'] = f"{remaining_seconds/60:.1f} minutes"
+            else:
+                progress_data['estimated_remaining_display'] = f"{remaining_seconds:.0f} seconds"
+        
+        return progress_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting progress: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get progress: {str(e)}")
 

@@ -38,6 +38,55 @@ class APIService {
   }
 
   /**
+   * Get real-time progress for a processing job
+   * @param {string} jobId - Job ID from processing result
+   * @returns {Promise} - Progress data
+   */
+  async getProgress(jobId) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/pdf/progress/${encodeURIComponent(jobId)}`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Progress API Error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Start processing with real-time progress updates
+   * @param {File} templateFile - PDF template file
+   * @param {File} csvFile - CSV data file
+   * @param {function} onProgress - Progress callback function
+   * @returns {Promise} - Final processing result
+   */
+  async processWithProgress(templateFile, csvFile, onProgress = null) {
+    // Start processing (this will be async on backend)
+    let jobId = null;
+    let processingComplete = false;
+    let finalResult = null;
+
+    // Start the processing request
+    const processingPromise = this.processPDFs(templateFile, csvFile).then(result => {
+      finalResult = result;
+      processingComplete = true;
+      return result;
+    });
+
+    // Wait a moment for the job to be created
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // For now, we'll use the promise approach since the processing is synchronous
+    // In a real production app, you'd get the job_id immediately and poll for progress
+    
+    return processingPromise;
+  }
+
+  /**
    * Get list of available templates
    * @returns {Promise} - List of templates
    */

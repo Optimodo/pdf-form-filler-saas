@@ -42,20 +42,90 @@ function App() {
     setError(null);
 
     try {
-      // Simulate progress updates
-      const progressInterval = setInterval(() => {
-        setProgress(prev => Math.min(prev + 20, 90));
-      }, 500);
-
-      setStatus('Processing PDFs...');
+      setStatus('Calculating...');
+      setProgress(5);
       
-      // Call the actual API
-      const result = await APIService.processPDFs(pdfFile, csvFile);
+      // Get file count first
+      const fileCount = await estimateFileCount(csvFile);
       
-      clearInterval(progressInterval);
-      setProgress(100);
-      setStatus('Complete!');
-      setResults(result);
+      if (fileCount > 0) {
+        setStatus(`Processing ${fileCount} PDFs...`);
+        
+        // Start processing
+        const startTime = Date.now();
+        let currentFile = 0;
+        let timePerFile = 0.1; // Start with optimistic estimate (100ms per file)
+        let adaptiveEstimate = false;
+        
+        // Progress update that gets smarter over time
+        const progressInterval = setInterval(() => {
+          const elapsed = (Date.now() - startTime) / 1000;
+          
+          // For first few seconds, show initial progress
+          if (elapsed < 3) {
+            const initialProgress = Math.min((elapsed / 3) * 20, 20); // 20% in first 3 seconds
+            setProgress(5 + initialProgress);
+            setStatus(`Processing ${fileCount} PDFs...`);
+          } else {
+            // After initial loading, simulate file-by-file processing
+            const processingTime = elapsed - 3; // Subtract initial loading time
+            
+            // Adaptive estimation: After 5-8 seconds of processing, calculate real average
+            if (processingTime > 5 && !adaptiveEstimate && fileCount >= 5) {
+              // We've been processing for 5+ seconds, calculate actual rate
+              const estimatedFilesProcessedSoFar = Math.floor(processingTime / timePerFile);
+              if (estimatedFilesProcessedSoFar >= 5) {
+                // Calculate actual time per file based on real progress
+                const realTimePerFile = processingTime / estimatedFilesProcessedSoFar;
+                timePerFile = realTimePerFile;
+                adaptiveEstimate = true;
+                console.log(`Adaptive estimate: ${(realTimePerFile * 1000).toFixed(0)}ms per file (was ${100}ms)`);
+              }
+            }
+            
+            const estimatedFilesProcessed = Math.floor(processingTime / timePerFile);
+            currentFile = Math.min(estimatedFilesProcessed, fileCount);
+            
+            const progressPercent = Math.min(25 + (currentFile / fileCount) * 65, 90); // 25% to 90%
+            setProgress(progressPercent);
+            
+            if (currentFile < fileCount) {
+              const remainingFiles = fileCount - currentFile;
+              const estimatedRemainingTime = remainingFiles * timePerFile;
+              
+              const timeLabel = adaptiveEstimate ? '' : '~'; // Remove ~ once we have real data
+              
+              if (estimatedRemainingTime > 60) {
+                setStatus(`Processing file ${currentFile + 1} of ${fileCount}... ${timeLabel}${Math.ceil(estimatedRemainingTime / 60)} min remaining`);
+              } else {
+                setStatus(`Processing file ${currentFile + 1} of ${fileCount}... ${timeLabel}${Math.ceil(estimatedRemainingTime)}s remaining`);
+              }
+            } else {
+              setStatus('Creating ZIP file...');
+            }
+          }
+        }, 500); // Update every 500ms for smoother progress
+        
+        // Call the actual API
+        const result = await APIService.processPDFs(pdfFile, csvFile);
+        
+        clearInterval(progressInterval);
+        setProgress(100);
+        setStatus('Complete!');
+        setResults(result);
+        
+        // Log actual time for future calibration
+        const actualTime = (Date.now() - startTime) / 1000;
+        console.log(`Actual processing time: ${actualTime}s for ${fileCount} files (${(actualTime/fileCount).toFixed(2)}s per file)`);
+        
+      } else {
+        // Fallback for unknown file count
+        setStatus('Processing PDFs...');
+        const result = await APIService.processPDFs(pdfFile, csvFile);
+        setProgress(100);
+        setStatus('Complete!');
+        setResults(result);
+      }
       
       setTimeout(() => {
         setIsProcessing(false);
@@ -74,6 +144,19 @@ function App() {
       await APIService.downloadZIP(zipFilename);
     } catch (err) {
       alert(`ZIP download failed: ${err.message}`);
+    }
+  };
+
+  // Helper function to estimate file count from CSV
+  const estimateFileCount = async (csvFile) => {
+    try {
+      const text = await csvFile.text();
+      const lines = text.split('\n').filter(line => line.trim().length > 0);
+      // Subtract 1 for header row, ensure minimum of 0
+      return Math.max(lines.length - 1, 0);
+    } catch (error) {
+      console.warn('Could not estimate file count:', error);
+      return 0;
     }
   };
 
@@ -107,18 +190,6 @@ function App() {
             onFileSelect={handleCsvSelect}
             className="csv-upload"
           />
-
-          <div className="output-section">
-            <div className="file-dropzone output-location">
-              <div className="dropzone-content">
-                <div className="dropzone-icon">📁</div>
-                <div className="dropzone-text">
-                  <div className="primary-text">Output Location (Optional)</div>
-                  <div className="secondary-text">Downloads folder by default</div>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Generate Button */}

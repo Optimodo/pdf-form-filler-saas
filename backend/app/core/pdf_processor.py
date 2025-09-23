@@ -9,7 +9,8 @@ import os
 import fitz  # PyMuPDF
 import csv
 import logging
-from typing import Dict, List, Tuple, Optional, Any
+import time
+from typing import Dict, List, Tuple, Optional, Any, Callable
 from pathlib import Path
 
 
@@ -185,12 +186,13 @@ class PDFProcessor:
                 except:
                     pass
     
-    def process_csv_batch(self, csv_path: str) -> Tuple[int, int, List[str]]:
+    def process_csv_batch(self, csv_path: str, progress_callback: Optional[Callable] = None) -> Tuple[int, int, List[str]]:
         """
         Process a batch of PDFs from CSV data.
         
         Args:
             csv_path: Path to the CSV file
+            progress_callback: Optional callback function for progress updates
             
         Returns:
             Tuple of (successful_count, total_count, error_messages)
@@ -212,7 +214,13 @@ class PDFProcessor:
                 successful = 0
                 errors = []
                 
+                # Initialize timing for progress estimation
+                start_time = time.time()
+                row_times = []  # Track time per row for estimation
+                
                 for i, row in enumerate(rows, 1):
+                    row_start_time = time.time()
+                    
                     try:
                         # Extract filename and remove from data
                         output_filename = row.pop('Filename')
@@ -229,6 +237,38 @@ class PDFProcessor:
                         error_msg = f"Error processing row {i}: {str(e)}"
                         errors.append(error_msg)
                         logging.error(error_msg)
+                    
+                    # Track timing and send progress update
+                    row_time = time.time() - row_start_time
+                    row_times.append(row_time)
+                    
+                    # Calculate progress and time estimates
+                    progress_percent = (i / total_rows) * 100
+                    elapsed_time = time.time() - start_time
+                    
+                    if i > 1:  # Need at least 2 rows to estimate
+                        avg_time_per_row = sum(row_times) / len(row_times)
+                        remaining_rows = total_rows - i
+                        estimated_remaining_time = remaining_rows * avg_time_per_row
+                    else:
+                        estimated_remaining_time = None
+                    
+                    # Send progress update if callback provided
+                    if progress_callback:
+                        try:
+                            progress_callback({
+                                'current': i,
+                                'total': total_rows,
+                                'progress_percent': progress_percent,
+                                'successful': successful,
+                                'errors': len(errors),
+                                'current_file': output_filename,
+                                'elapsed_time': elapsed_time,
+                                'estimated_remaining': estimated_remaining_time
+                            })
+                        except Exception as cb_error:
+                            # Don't let callback errors break processing
+                            logging.warning(f"Progress callback error: {cb_error}")
                 
                 return successful, total_rows, errors
                 
@@ -238,7 +278,7 @@ class PDFProcessor:
             return 0, 0, [error_msg]
 
 
-def process_pdf_batch(template_path: str, csv_path: str, output_dir: Optional[str] = None) -> Dict[str, Any]:
+def process_pdf_batch(template_path: str, csv_path: str, output_dir: Optional[str] = None, progress_callback: Optional[Callable] = None) -> Dict[str, Any]:
     """
     Convenience function to process a batch of PDFs.
     
@@ -246,13 +286,14 @@ def process_pdf_batch(template_path: str, csv_path: str, output_dir: Optional[st
         template_path: Path to PDF template
         csv_path: Path to CSV data file
         output_dir: Optional output directory
+        progress_callback: Optional callback function for progress updates
         
     Returns:
         Dictionary with processing results
     """
     try:
         processor = PDFProcessor(template_path, output_dir)
-        successful, total, errors = processor.process_csv_batch(csv_path)
+        successful, total, errors = processor.process_csv_batch(csv_path, progress_callback)
         
         return {
             "success": True,
