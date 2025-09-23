@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .api.pdf_routes import router as pdf_router
+
 app = FastAPI(
     title="PDF Form Filler SaaS",
     description="Web-based PDF form filling application",
@@ -15,6 +17,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include PDF processing routes
+app.include_router(pdf_router)
 
 @app.get("/")
 async def root():
