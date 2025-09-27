@@ -1,10 +1,40 @@
 /**
  * API service for communicating with the backend
  */
+import { getUserFriendlyError, isNetworkError, getNetworkErrorMessage } from '../utils/errorMessages';
 
 const API_BASE_URL = 'http://localhost:8000';
 
 class APIService {
+  /**
+   * Handle API response errors with user-friendly messages
+   * @param {Response} response - Fetch response object
+   * @param {string} defaultMessage - Default error message
+   * @returns {Promise<Error>} - Processed error
+   */
+  async handleApiError(response, defaultMessage = 'Request failed') {
+    try {
+      const errorData = await response.json();
+      const friendlyMessage = getUserFriendlyError(errorData);
+      return new Error(friendlyMessage);
+    } catch (parseError) {
+      // If we can't parse the error response, use a friendly default
+      return new Error(getUserFriendlyError(defaultMessage));
+    }
+  }
+
+  /**
+   * Handle network errors
+   * @param {Error} error - Original error
+   * @param {string} context - Context of the operation
+   * @returns {Error} - Processed error
+   */
+  handleNetworkError(error, context = 'operation') {
+    if (isNetworkError(error)) {
+      return new Error(getNetworkErrorMessage());
+    }
+    return new Error(getUserFriendlyError(error.message || `Failed to complete ${context}`));
+  }
   /**
    * Process PDFs using template and CSV data
    * @param {File} templateFile - PDF template file
@@ -152,13 +182,13 @@ class APIService {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || `Registration failed: ${response.status}`);
+        throw await this.handleApiError(response, 'Registration failed');
       }
 
       return await response.json();
     } catch (error) {
       console.error('Registration Error:', error);
-      throw error;
+      throw this.handleNetworkError(error, 'registration');
     }
   }
 
@@ -180,8 +210,7 @@ class APIService {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Login failed');
+        throw await this.handleApiError(response, 'Login failed');
       }
 
       const data = await response.json();
@@ -193,7 +222,7 @@ class APIService {
       return data;
     } catch (error) {
       console.error('Login Error:', error);
-      throw error;
+      throw this.handleNetworkError(error, 'login');
     }
   }
 
@@ -308,6 +337,63 @@ class APIService {
       throw error;
     }
   }
+
+  /**
+   * Update user profile information
+   * @param {Object} profileData - Profile data to update
+   * @returns {Promise} - Updated user data
+   */
+  async updateProfile(profileData) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/users/me`, {
+        method: 'PATCH',
+        headers: {
+          ...this.getAuthHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(profileData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `Failed to update profile: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Update Profile Error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update user password using FastAPI-Users' built-in endpoint
+   * @param {Object} passwordData - Password data
+   * @returns {Promise} - Success response
+   */
+  async changePassword(passwordData) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/users/me`, {
+        method: 'PATCH',
+        headers: {
+          ...this.getAuthHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ password: passwordData.new_password }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw await this.handleApiError(response, 'Failed to update password');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Update Password Error:', error);
+      throw this.handleNetworkError(error, 'password update');
+    }
+  }
+
 }
 
 const apiService = new APIService();

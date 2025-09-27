@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import AuthModal from '../Auth/AuthModal';
 
@@ -6,6 +6,8 @@ const UserInfo = () => {
   const { user, isAuthenticated, logout } = useAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState('login');
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef(null);
 
   const handleLogin = () => {
     setAuthMode('login');
@@ -19,7 +21,28 @@ const UserInfo = () => {
 
   const handleLogout = async () => {
     await logout();
+    setShowDropdown(false);
   };
+
+  const handleDashboard = () => {
+    window.history.pushState({}, '', '/dashboard');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    setShowDropdown(false);
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   if (isAuthenticated && user) {
     // Authenticated user display
@@ -30,18 +53,42 @@ const UserInfo = () => {
     const planDisplay = user.subscription_tier === 'free' ? 'Free' : user.subscription_tier;
 
     return (
-      <div className="user-info authenticated">
-        <span className="user-avatar">👤</span>
-        <span className="user-details">
-          {displayName} | {planDisplay} | {user.credits_remaining} credits
-        </span>
-        <button 
-          className="logout-btn"
-          onClick={handleLogout}
-          title="Logout"
+      <div className="user-info authenticated" ref={dropdownRef}>
+        <div 
+          className="user-display"
+          onClick={() => setShowDropdown(!showDropdown)}
         >
-          ↗️
-        </button>
+          <span className="user-avatar">👤</span>
+          <span className="user-details">
+            {displayName} | {planDisplay}
+          </span>
+          <span className="dropdown-arrow">{showDropdown ? '▲' : '▼'}</span>
+        </div>
+        
+        {showDropdown && (
+          <div className="user-dropdown">
+            <div className="dropdown-section">
+              <div className="dropdown-header">
+                <strong>{displayName}</strong>
+                <div className="user-tier">{planDisplay} Plan</div>
+                <div className="user-credits">{user.credits_remaining || 0} credits remaining</div>
+              </div>
+            </div>
+            
+            <div className="dropdown-divider"></div>
+            
+            <div className="dropdown-section">
+              <button className="dropdown-item" onClick={handleDashboard}>
+                <span className="dropdown-icon">📊</span>
+                Dashboard
+              </button>
+              <button className="dropdown-item" onClick={handleLogout}>
+                <span className="dropdown-icon">↗️</span>
+                Sign Out
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

@@ -1,10 +1,11 @@
 """
 Authentication routes using FastAPI-Users.
 """
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.responses import RedirectResponse
 from fastapi_users import fastapi_users
 from httpx_oauth.clients.google import GoogleOAuth2
+from pydantic import BaseModel
 
 from ..auth import auth_backend, fastapi_users, google_oauth_client, current_active_user, SECRET_KEY, get_user_manager, UserManager
 from ..schemas import UserRead, UserCreate, UserUpdate
@@ -12,6 +13,8 @@ from ..models import User, OAuthAccount
 from ..database import get_async_session
 from fastapi_users.db import SQLAlchemyUserDatabase
 from sqlalchemy.ext.asyncio import AsyncSession
+
+
 
 router = APIRouter()
 
@@ -255,7 +258,11 @@ async def get_current_user(user: User = Depends(current_active_user)):
     return user
 
 
+
+
 @router.get("/auth/protected")
 async def protected_route(user: User = Depends(current_active_user)):
     """Example protected route."""
     return {"message": f"Hello {user.email}! This is a protected route."}
+
+

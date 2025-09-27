@@ -6,6 +6,8 @@ import ProgressBar from './components/Processing/ProgressBar';
 import ResultsDisplay from './components/Processing/ResultsDisplay';
 import AdBanner from './components/Ads/AdBanner';
 import GoogleCallback from './components/Auth/GoogleCallback';
+import UserDashboard from './components/Dashboard/UserDashboard';
+import ProfileEdit from './components/Dashboard/ProfileEdit';
 import APIService from './services/api';
 import './styles/themes.css';
 import './styles/components.css';
@@ -187,6 +189,34 @@ function App() {
           <Header />
           <main className="main-container">
             <GoogleCallback />
+          </main>
+        </div>
+      </AuthProvider>
+    );
+  }
+
+  // Handle Dashboard route
+  if (currentRoute === '/dashboard') {
+    return (
+      <AuthProvider>
+        <div className="app">
+          <Header />
+          <main className="main-container">
+            <UserDashboard />
+          </main>
+        </div>
+      </AuthProvider>
+    );
+  }
+
+  // Handle Profile Edit route
+  if (currentRoute === '/profile') {
+    return (
+      <AuthProvider>
+        <div className="app">
+          <Header />
+          <main className="main-container">
+            <ProfileEdit />
           </main>
         </div>
       </AuthProvider>
