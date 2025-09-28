@@ -63,15 +63,19 @@ Thumbs.db
 # Docker
 .dockerignore
 
-# Uploads and outputs (development)
-/backend/uploads/*
-!/backend/uploads/.gitkeep
-/backend/outputs/*
-!/backend/outputs/.gitkeep
-
 # Storage directory (user uploads and generated files)
 /backend/storage/*
 !/backend/storage/.gitkeep
+
+# Virtual environments
+/backend/venv/
+venv/
+env/
+ENV/
+
+# Debug and temporary files
+debug_*.py
+fix_database*.py
 
 # Keep archive for reference
 # archive-desktop-app/
