@@ -50,6 +50,9 @@ class APIService {
       
       const response = await fetch(`${API_BASE_URL}/api/pdf/process-batch`, {
         method: 'POST',
+        headers: {
+          ...this.getAuthHeaders(),
+        },
         body: formData,
       });
 
@@ -74,7 +77,11 @@ class APIService {
    */
   async getProgress(jobId) {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/pdf/progress/${encodeURIComponent(jobId)}`);
+      const response = await fetch(`${API_BASE_URL}/api/pdf/progress/${encodeURIComponent(jobId)}`, {
+        headers: {
+          ...this.getAuthHeaders(),
+        },
+      });
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -125,7 +132,12 @@ class APIService {
   async downloadZIP(zipFilename) {
     try {
       const response = await fetch(
-        `${API_BASE_URL}/api/pdf/download-zip/${encodeURIComponent(zipFilename)}`
+        `${API_BASE_URL}/api/pdf/download-zip/${encodeURIComponent(zipFilename)}`,
+        {
+          headers: {
+            ...this.getAuthHeaders(),
+          },
+        }
       );
       
       if (!response.ok) {
@@ -304,6 +316,7 @@ class APIService {
    */
   getAuthHeaders() {
     const token = localStorage.getItem('access_token');
+    console.log('Auth token:', token ? `${token.substring(0, 20)}...` : 'None');
     return token ? { 'Authorization': `Bearer ${token}` } : {};
   }
 

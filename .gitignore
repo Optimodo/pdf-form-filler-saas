@@ -69,5 +69,9 @@ Thumbs.db
 /backend/outputs/*
 !/backend/outputs/.gitkeep
 
+# Storage directory (user uploads and generated files)
+/backend/storage/*
+!/backend/storage/.gitkeep
+
 # Keep archive for reference
 # archive-desktop-app/

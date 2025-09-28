@@ -13,15 +13,18 @@ from typing import List, Optional
 from pathlib import Path
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends, Header
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends, Header, Request
 from fastapi.responses import FileResponse, StreamingResponse
 import aiofiles
 
 from ..core.pdf_processor import process_pdf_batch
 from ..core.progress_tracker import progress_tracker
 from ..core.user_limits import get_user_limits_from_user, get_anonymous_user_limits, validate_file_size
+from ..core.file_manager import file_manager
 from ..auth import current_active_user
 from ..models import User
+from ..database import get_async_session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/api/pdf", tags=["PDF Processing"])
 
@@ -31,25 +34,45 @@ logger = logging.getLogger(__name__)
 
 
 async def get_optional_current_user(
-    authorization: Optional[str] = Header(None)
+    request: Request
 ) -> Optional[User]:
     """
     Optional authentication dependency - returns User if authenticated, None if not.
     This allows endpoints to work for both authenticated and anonymous users.
     """
+    logger.info("=== AUTH DEPENDENCY CALLED ===")
+    authorization = request.headers.get("Authorization")
+    logger.info(f"Authorization header: {authorization}")
+    
     if not authorization or not authorization.startswith("Bearer "):
+        logger.info("No valid authorization header found")
         return None
     
     try:
-        # Extract token and validate
-        from ..auth import fastapi_users, auth_backend
-        strategy = auth_backend.get_strategy()
-        token = authorization.replace("Bearer ", "")
-        user = await strategy.read_token(token, None)
-        if user and user.is_active:
-            return user
-    except Exception:
-        pass
+        # Use FastAPI-Users dependency system
+        from ..auth import fastapi_users, get_user_manager, get_user_db
+        from ..database import get_async_session
+        
+        # Get dependencies
+        async for session in get_async_session():
+            async for user_db in get_user_db(session):
+                async for user_manager in get_user_manager(user_db):
+                    # Get the JWT strategy from auth_backend
+                    from ..auth import auth_backend
+                    strategy = auth_backend.get_strategy()
+                    token = authorization.replace("Bearer ", "")
+                    logger.info(f"Attempting to validate token: {token[:20]}...")
+                    
+                    # Validate token and get user
+                    user = await strategy.read_token(token, user_manager)
+                    if user and user.is_active:
+                        logger.info(f"User authenticated successfully: {user.email}")
+                        return user
+                    else:
+                        logger.info("Token validation failed or user inactive")
+                        return None
+    except Exception as e:
+        logger.error(f"Authentication error: {e}")
     
     return None
 
@@ -59,7 +82,8 @@ async def process_pdf_batch_endpoint(
     template: UploadFile = File(..., description="PDF template file"),
     csv_data: UploadFile = File(..., description="CSV data file"),
     output_name: Optional[str] = Form(None, description="Custom output directory name"),
-    current_user: Optional[User] = Depends(get_optional_current_user)
+    current_user: Optional[User] = Depends(get_optional_current_user),
+    session: AsyncSession = Depends(get_async_session)
 ):
     """
     Process a batch of PDFs using template and CSV data.
@@ -69,6 +93,11 @@ async def process_pdf_batch_endpoint(
     
     File size limits are enforced based on user subscription tier.
     """
+    logger.info(f"=== PROCESSING REQUEST START ===")
+    logger.info(f"Processing request - current_user: {current_user.email if current_user else 'None'}")
+    logger.info(f"Processing request - current_user type: {type(current_user)}")
+    logger.info(f"Processing request - current_user id: {current_user.id if current_user else 'None'}")
+    
     temp_dir = None
     try:
         # Validate file types
@@ -102,27 +131,41 @@ async def process_pdf_batch_endpoint(
             if not is_valid:
                 raise HTTPException(status_code=413, detail=error_msg)
         
+        # Store uploaded files with proper naming and database tracking
+        template_content = await template.read()
+        csv_content = await csv_data.read()
+        
+        # Store template file
+        template_file = await file_manager.store_uploaded_file(
+            file_content=template_content,
+            original_filename=template.filename,
+            file_type='pdf',
+            user=current_user,
+            session=session
+        )
+        
+        # Store CSV file
+        csv_file = await file_manager.store_uploaded_file(
+            file_content=csv_content,
+            original_filename=csv_data.filename,
+            file_type='csv',
+            user=current_user,
+            session=session
+        )
+        
         # Create temporary directory for processing
         temp_dir = tempfile.mkdtemp()
         
-        # Save uploaded files
+        # Copy stored files to temp directory for processing
         template_path = os.path.join(temp_dir, template.filename)
         csv_path = os.path.join(temp_dir, csv_data.filename)
         
-        # Save template file
-        async with aiofiles.open(template_path, 'wb') as f:
-            content = await template.read()
-            await f.write(content)
+        shutil.copy2(template_file.file_path, template_path)
+        shutil.copy2(csv_file.file_path, csv_path)
         
-        # Save CSV file
-        async with aiofiles.open(csv_path, 'wb') as f:
-            content = await csv_data.read()
-            await f.write(content)
-        
-        # Set output directory - use mounted volume for accessibility
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        session_dir = f"session_{timestamp}"
-        output_dir = os.path.join("/app/outputs", session_dir)
+        # Generate session ID with ddmmyyyy format
+        session_id = file_manager.generate_session_id(current_user)
+        output_dir = os.path.join("/app/storage/outputs", session_id)
         os.makedirs(output_dir, exist_ok=True)
         
         # Process PDFs using the proven desktop logic
@@ -146,7 +189,7 @@ async def process_pdf_batch_endpoint(
             
             if generated_files:
                 # Create ZIP file containing all generated PDFs
-                zip_filename = f"generated_pdfs_{timestamp}.zip"
+                zip_filename = file_manager.generate_zip_filename(session_id, template.filename)
                 zip_path = os.path.join(output_dir, zip_filename)
                 
                 try:
@@ -158,8 +201,13 @@ async def process_pdf_batch_endpoint(
                     result["zip_file"] = zip_filename
                     result["zip_path"] = zip_path
                     result["generated_files"] = generated_files
+                    result["session_id"] = session_id
                     
                     logger.info(f"Created ZIP file: {zip_filename} with {len(generated_files)} PDFs")
+                    
+                    # Clean up individual PDF files after ZIP creation
+                    file_manager.cleanup_individual_pdfs(output_dir, generated_files)
+                    logger.info(f"Cleaned up {len(generated_files)} individual PDF files")
                     
                 except Exception as zip_error:
                     logger.error(f"Failed to create ZIP file: {zip_error}")
@@ -167,6 +215,16 @@ async def process_pdf_batch_endpoint(
             
             logger.info(f"Batch processing completed: {result['successful_count']} of {result['total_count']} PDFs")
             
+        # Create processing job record for tracking and history
+        await file_manager.create_processing_job_record(
+            session=session,
+            user=current_user,
+            template_file=template_file,
+            csv_file=csv_file,
+            session_id=session_id,
+            result=result
+        )
+        
         return result
         
     except HTTPException:
@@ -200,7 +258,7 @@ async def download_generated_zip(zip_filename: str):
             raise HTTPException(status_code=400, detail="Invalid file type")
         
         # Look for the ZIP file in output directories
-        outputs_base = "/app/outputs"
+        outputs_base = "/app/storage/outputs"
         session_dirs = [d for d in os.listdir(outputs_base) if d.startswith('session_') and os.path.isdir(os.path.join(outputs_base, d))]
         
         zip_path = None
@@ -303,4 +361,86 @@ async def get_processing_progress(job_id: str):
     except Exception as e:
         logger.error(f"Error getting progress: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get progress: {str(e)}")
+
+
+@router.get("/user-files")
+async def get_user_uploaded_files(
+    file_type: Optional[str] = None,
+    current_user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """
+    Get all files uploaded by the current user.
+    
+    Args:
+        file_type: Optional filter for 'pdf' or 'csv' files
+    """
+    try:
+        files = await file_manager.get_user_files(session, current_user, file_type)
+        
+        result = []
+        for file in files:
+            result.append({
+                "id": str(file.id),
+                "original_filename": file.original_filename,
+                "stored_filename": file.stored_filename,
+                "file_type": file.file_type,
+                "file_size_bytes": file.file_size_bytes,
+                "file_size_display": format_file_size(file.file_size_bytes),
+                "uploaded_at": file.uploaded_at.isoformat(),
+                "usage_count": file.usage_count,
+                "last_used": file.last_used.isoformat() if file.last_used else None
+            })
+        
+        return {
+            "files": result,
+            "total_count": len(result)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting user files: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get user files: {str(e)}")
+
+
+@router.get("/processing-history")
+async def get_user_processing_history(
+    limit: int = 50,
+    current_user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """
+    Get processing history for the current user.
+    
+    Args:
+        limit: Maximum number of records to return (default 50)
+    """
+    try:
+        jobs = await file_manager.get_user_processing_history(session, current_user, limit)
+        
+        result = []
+        for job in jobs:
+            result.append({
+                "id": str(job.id),
+                "session_id": job.session_id,
+                "template_filename": job.template_filename,
+                "csv_filename": job.csv_filename,
+                "pdf_count": job.pdf_count,
+                "successful_count": job.successful_count,
+                "failed_count": job.failed_count,
+                "processing_time_seconds": job.processing_time_seconds,
+                "zip_filename": job.zip_filename,
+                "status": job.status,
+                "credits_consumed": job.credits_consumed,
+                "created_at": job.created_at.isoformat(),
+                "completed_at": job.completed_at.isoformat() if job.completed_at else None
+            })
+        
+        return {
+            "processing_history": result,
+            "total_count": len(result)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting processing history: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get processing history: {str(e)}")
 

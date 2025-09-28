@@ -55,6 +55,7 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
     # Relationships
     templates = relationship("UserTemplate", back_populates="user", cascade="all, delete-orphan")
     processing_jobs = relationship("ProcessingJob", back_populates="user", cascade="all, delete-orphan")
+    uploaded_files = relationship("UploadedFile", back_populates="user", cascade="all, delete-orphan")
     oauth_accounts = relationship("OAuthAccount", back_populates="user", cascade="all, delete-orphan")
 
 
@@ -86,7 +87,42 @@ class UserTemplate(Base):
     
     # Relationships
     user = relationship("User", back_populates="templates")
-    processing_jobs = relationship("ProcessingJob", back_populates="template")
+
+
+class UploadedFile(Base):
+    """
+    Track uploaded template and CSV files.
+    """
+    __tablename__ = "uploaded_files"
+    
+    id: UUID = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Optional[UUID] = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True)  # NULL for anonymous uploads
+    
+    # File information
+    original_filename: str = Column(String(255), nullable=False)
+    stored_filename: str = Column(String(255), nullable=False)  # Our internal filename with date/user reference
+    file_path: str = Column(String(500), nullable=False)  # Full path to stored file
+    file_type: str = Column(String(10), nullable=False)  # 'pdf' or 'csv'
+    file_size_bytes: int = Column(Integer, nullable=False)
+    
+    # File hash for deduplication (optional)
+    file_hash: Optional[str] = Column(String(64), nullable=True)  # SHA-256 hash
+    
+    # Metadata
+    upload_ip: Optional[str] = Column(String(45), nullable=True)  # For anonymous tracking
+    mime_type: Optional[str] = Column(String(100), nullable=True)
+    
+    # Timestamps with ddmmyyyy format preference
+    uploaded_at: datetime = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    last_used: Optional[datetime] = Column(DateTime(timezone=True), nullable=True)
+    
+    # Usage tracking
+    usage_count: int = Column(Integer, default=0, nullable=False)
+    
+    # Relationships
+    user = relationship("User", back_populates="uploaded_files")
+    processing_jobs_as_template = relationship("ProcessingJob", foreign_keys="ProcessingJob.template_file_id", back_populates="template_file")
+    processing_jobs_as_csv = relationship("ProcessingJob", foreign_keys="ProcessingJob.csv_file_id", back_populates="csv_file")
 
 
 class ProcessingJob(Base):
@@ -96,19 +132,20 @@ class ProcessingJob(Base):
     __tablename__ = "processing_jobs"
     
     id: UUID = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id: UUID = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    template_id: Optional[UUID] = Column(UUID(as_uuid=True), ForeignKey("user_templates.id", ondelete="SET NULL"), nullable=True)
+    user_id: Optional[UUID] = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True)  # NULL for anonymous
+    template_file_id: Optional[UUID] = Column(UUID(as_uuid=True), ForeignKey("uploaded_files.id", ondelete="SET NULL"), nullable=True)
+    csv_file_id: Optional[UUID] = Column(UUID(as_uuid=True), ForeignKey("uploaded_files.id", ondelete="SET NULL"), nullable=True)
     
     # Job details
-    template_filename: str = Column(String(255), nullable=False)
-    csv_filename: str = Column(String(255), nullable=False)
+    template_filename: str = Column(String(255), nullable=False)  # Original template name
+    csv_filename: str = Column(String(255), nullable=False)  # Original CSV name
     pdf_count: int = Column(Integer, nullable=False)
     successful_count: int = Column(Integer, default=0, nullable=False)
     failed_count: int = Column(Integer, default=0, nullable=False)
     
     # Processing details
-    processing_time_seconds: Optional[float] = Column(String(10), nullable=True)  # Store as string to avoid precision issues
-    file_size_mb: Optional[float] = Column(String(10), nullable=True)
+    processing_time_seconds: Optional[float] = Column(String(20), nullable=True)  # Store as string to avoid precision issues
+    file_size_mb: Optional[float] = Column(String(20), nullable=True)
     zip_filename: Optional[str] = Column(String(255), nullable=True)
     zip_file_path: Optional[str] = Column(String(500), nullable=True)
     
@@ -117,15 +154,20 @@ class ProcessingJob(Base):
     error_message: Optional[str] = Column(Text, nullable=True)
     
     # Credits
-    credits_consumed: int = Column(Integer, nullable=False)
+    credits_consumed: int = Column(Integer, default=0, nullable=False)  # 0 for anonymous
     
-    # Timestamps
+    # Processing metadata
+    session_id: Optional[str] = Column(String(100), nullable=True)  # For grouping related operations
+    processing_ip: Optional[str] = Column(String(45), nullable=True)
+    
+    # Timestamps (using ddmmyyyy format in filename generation)
     created_at: datetime = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     completed_at: Optional[datetime] = Column(DateTime(timezone=True), nullable=True)
     
     # Relationships
     user = relationship("User", back_populates="processing_jobs")
-    template = relationship("UserTemplate", back_populates="processing_jobs")
+    template_file = relationship("UploadedFile", foreign_keys=[template_file_id], back_populates="processing_jobs_as_template")
+    csv_file = relationship("UploadedFile", foreign_keys=[csv_file_id], back_populates="processing_jobs_as_csv")
 
 
 class OAuthAccount(SQLAlchemyBaseOAuthAccountTableUUID, Base):

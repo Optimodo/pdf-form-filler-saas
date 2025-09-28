@@ -22,6 +22,7 @@ function App() {
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
 
+
   // Simple routing based on URL path
   useEffect(() => {
     const path = window.location.pathname;
@@ -36,13 +37,79 @@ function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
+  const validateFilename = (filename) => {
+    // Check if filename is too long (considering our prefix will add ~30 chars)
+    const maxLength = 120; // Leave room for date, time, user ID prefix
+    if (filename.length > maxLength) {
+      return {
+        isValid: false,
+        message: `Filename too long (${filename.length} chars). Please keep under ${maxLength} characters to avoid filesystem limitations.`,
+        suggestion: `Try shortening your filename to under ${maxLength} characters.`
+      };
+    }
+    
+    // Check for dangerous characters that could cause security issues
+    const dangerousChars = ['..', '/', '\\', ':', '*', '?', '"', '<', '>', '|'];
+    for (const char of dangerousChars) {
+      if (filename.includes(char)) {
+        return {
+          isValid: false,
+          message: `Filename contains invalid character: "${char}". Please use only letters, numbers, hyphens, and underscores.`,
+          suggestion: `Remove the "${char}" character and use only letters, numbers, hyphens (-), and underscores (_).`
+        };
+      }
+    }
+    
+    // Check for empty filename
+    if (!filename.trim()) {
+      return {
+        isValid: false,
+        message: "Filename cannot be empty.",
+        suggestion: "Please choose a descriptive name for your file."
+      };
+    }
+    
+    // Check for reserved Windows names
+    const reservedNames = ['CON', 'PRN', 'AUX', 'NUL', 'COM1', 'COM2', 'COM3', 'COM4', 
+                          'COM5', 'COM6', 'COM7', 'COM8', 'COM9', 'LPT1', 'LPT2', 
+                          'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9'];
+    const nameWithoutExt = filename.split('.')[0].toUpperCase();
+    if (reservedNames.includes(nameWithoutExt)) {
+      return {
+        isValid: false,
+        message: `Filename "${nameWithoutExt}" is reserved by the system. Please choose a different name.`,
+        suggestion: `Try adding a prefix like "my_${nameWithoutExt}" or use a completely different name.`
+      };
+    }
+    
+    return { isValid: true };
+  };
+
   const handlePdfSelect = (file) => {
+    const validation = validateFilename(file.name);
+    if (!validation.isValid) {
+      const errorMessage = validation.suggestion 
+        ? `${validation.message}\n\n💡 Suggestion: ${validation.suggestion}`
+        : validation.message;
+      setError(errorMessage);
+      return;
+    }
+    
     setPdfFile(file);
     setResults(null); // Clear previous results
     setError(null);
   };
 
   const handleCsvSelect = (file) => {
+    const validation = validateFilename(file.name);
+    if (!validation.isValid) {
+      const errorMessage = validation.suggestion 
+        ? `${validation.message}\n\n💡 Suggestion: ${validation.suggestion}`
+        : validation.message;
+      setError(errorMessage);
+      return;
+    }
+    
     setCsvFile(file);
     setResults(null); // Clear previous results
     setError(null);
@@ -98,7 +165,6 @@ function App() {
                 const realTimePerFile = processingTime / estimatedFilesProcessedSoFar;
                 timePerFile = realTimePerFile;
                 adaptiveEstimate = true;
-                console.log(`Adaptive estimate: ${(realTimePerFile * 1000).toFixed(0)}ms per file (was ${100}ms)`);
               }
             }
             
@@ -133,9 +199,6 @@ function App() {
         setStatus('Complete!');
         setResults(result);
         
-        // Log actual time for future calibration
-        const actualTime = (Date.now() - startTime) / 1000;
-        console.log(`Actual processing time: ${actualTime}s for ${fileCount} files (${(actualTime/fileCount).toFixed(2)}s per file)`);
         
       } else {
         // Fallback for unknown file count
@@ -174,7 +237,6 @@ function App() {
       // Subtract 1 for header row, ensure minimum of 0
       return Math.max(lines.length - 1, 0);
     } catch (error) {
-      console.warn('Could not estimate file count:', error);
       return 0;
     }
   };
@@ -278,7 +340,10 @@ function App() {
         {/* Error Message */}
         {error && (
           <div className="status-message status-error">
-            <strong>Error:</strong> {error}
+            <strong>Error:</strong> 
+            <div style={{ whiteSpace: 'pre-line', marginTop: '8px' }}>
+              {error}
+            </div>
           </div>
         )}
 
