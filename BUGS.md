@@ -2,40 +2,15 @@
 
 ## Open Issues
 
-### CSV File Line Detection Issue
-**Status**: Open  
-**Priority**: Medium  
-**Description**: 
-- CSV file line count detection sometimes includes empty or hidden lines
-- User reported deleting all data and saving CSV but script still detected lines
-- May be related to invisible characters, BOM, or line ending issues
-- Progress bar shows incorrect file count based on this detection
+*No open issues at this time.*
 
-**Steps to Reproduce**:
-1. Create a CSV file with data
-2. Delete all data and save
-3. Upload to PDF processor
-4. Check console logs for line count detection
-
-**Expected Behavior**: 
-- Empty CSV should show 0 lines
-- Only actual data rows should be counted
-
-**Actual Behavior**:
-- Script detects lines even when CSV appears empty
-- Progress bar shows incorrect file count
-
-**Debug Information**:
-- Console logs show: "CSV file analysis: X total lines, Y data rows"
-- Need to investigate CSV parsing logic in `estimateFileCount` function
-
-**Files Affected**:
-- `frontend/src/App.jsx` - `estimateFileCount` function
-- CSV file parsing logic
-
----
 
 ## Resolved Issues
+
+### CSV File Line Detection Issue
+**Status**: Resolved  
+**Description**: CSV file line count detection was including empty or hidden lines  
+**Solution**: Enhanced CSV parsing to handle BOM, improved line ending detection, and better filtering of empty rows
 
 ### Authentication Token Not Being Sent
 **Status**: Resolved  

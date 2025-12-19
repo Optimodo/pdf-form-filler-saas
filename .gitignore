@@ -66,6 +66,9 @@ Thumbs.db
 # Storage directory (user uploads and generated files)
 /backend/storage/*
 !/backend/storage/.gitkeep
+!/backend/storage/csv_files/.gitkeep
+!/backend/storage/outputs/.gitkeep
+!/backend/storage/templates/.gitkeep
 
 # Virtual environments
 /backend/venv/

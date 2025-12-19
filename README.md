@@ -33,12 +33,18 @@ A web-based SaaS application for batch-filling PDF forms using data from CSV fil
    cd pdf-form-filler-saas
    ```
 
-2. **Start the development environment:**
+2. **Create environment file:**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your actual values
+   ```
+
+3. **Start the development environment:**
    ```bash
    docker-compose up --build
    ```
 
-3. **Access the application:**
+4. **Access the application:**
    - Frontend: http://localhost:3000
    - Backend API: http://localhost:8000
    - API Documentation: http://localhost:8000/docs

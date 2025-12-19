@@ -243,11 +243,18 @@ async def process_pdf_batch_endpoint(
 
 
 @router.get("/download-zip/{zip_filename}")
-async def download_generated_zip(zip_filename: str):
+async def download_generated_zip(
+    zip_filename: str,
+    session_id: Optional[str] = None
+):
     """
     Download a ZIP file containing all generated PDFs.
     
     This provides a single download for all processed PDFs.
+    
+    Args:
+        zip_filename: Name of the ZIP file to download
+        session_id: Optional session ID to narrow search (if provided, only searches that directory)
     """
     try:
         # Basic filename validation for security
@@ -258,17 +265,57 @@ async def download_generated_zip(zip_filename: str):
             raise HTTPException(status_code=400, detail="Invalid file type")
         
         # Look for the ZIP file in output directories
+        # Session directories are named with format: sess_ddmmyyyy_HHMMSS_userref
         outputs_base = "/app/storage/outputs"
-        session_dirs = [d for d in os.listdir(outputs_base) if d.startswith('session_') and os.path.isdir(os.path.join(outputs_base, d))]
+        
+        # Check if outputs_base exists
+        if not os.path.exists(outputs_base):
+            logger.error(f"Outputs base directory does not exist: {outputs_base}")
+            raise HTTPException(status_code=404, detail="Output directory not found")
         
         zip_path = None
-        for session_dir in session_dirs:
-            potential_path = os.path.join(outputs_base, session_dir, zip_filename)
-            if os.path.exists(potential_path):
-                zip_path = potential_path
-                break
         
-        if not zip_path or not os.path.exists(zip_path):
+        # If session_id is provided, check that specific directory first
+        if session_id:
+            # Validate session_id for security
+            if '..' in session_id or '/' in session_id or '\\' in session_id:
+                raise HTTPException(status_code=400, detail="Invalid session ID")
+            
+            specific_dir = os.path.join(outputs_base, session_id)
+            if os.path.exists(specific_dir) and os.path.isdir(specific_dir):
+                potential_path = os.path.join(specific_dir, zip_filename)
+                if os.path.exists(potential_path):
+                    zip_path = potential_path
+                    logger.info(f"Found ZIP file in specified session directory: {zip_path}")
+        
+        # If not found and no session_id, or session_id didn't work, search all directories
+        if not zip_path:
+            # Look for directories starting with 'sess_' (not 'session_')
+            try:
+                session_dirs = [d for d in os.listdir(outputs_base) 
+                              if d.startswith('sess_') and os.path.isdir(os.path.join(outputs_base, d))]
+                
+                for session_dir in session_dirs:
+                    potential_path = os.path.join(outputs_base, session_dir, zip_filename)
+                    if os.path.exists(potential_path):
+                        zip_path = potential_path
+                        logger.info(f"Found ZIP file at: {zip_path}")
+                        break
+            except Exception as list_error:
+                logger.error(f"Error listing output directories: {list_error}")
+                raise HTTPException(status_code=500, detail="Error accessing output directory")
+        
+        # If still not found, log available directories for debugging
+        if not zip_path:
+            try:
+                available_dirs = [d for d in os.listdir(outputs_base) if os.path.isdir(os.path.join(outputs_base, d))]
+                logger.warning(f"ZIP file {zip_filename} not found. Available directories: {available_dirs}")
+            except:
+                pass
+            raise HTTPException(status_code=404, detail="ZIP file not found or expired")
+        
+        # Verify the file exists and is readable
+        if not os.path.exists(zip_path) or not os.path.isfile(zip_path):
             raise HTTPException(status_code=404, detail="ZIP file not found or expired")
         
         # Return the ZIP file
@@ -282,6 +329,8 @@ async def download_generated_zip(zip_filename: str):
         raise
     except Exception as e:
         logger.error(f"Error downloading ZIP file: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"ZIP download failed: {str(e)}")
 
 

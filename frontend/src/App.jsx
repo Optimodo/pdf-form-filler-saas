@@ -233,10 +233,25 @@ function App() {
   const estimateFileCount = async (csvFile) => {
     try {
       const text = await csvFile.text();
-      const lines = text.split('\n').filter(line => line.trim().length > 0);
+      
+      // Remove BOM if present
+      const cleanText = text.replace(/^\uFEFF/, '');
+      
+      // Split by various line endings and filter properly
+      const lines = cleanText
+        .split(/\r?\n/) // Handle both \n and \r\n line endings
+        .map(line => line.trim()) // Remove leading/trailing whitespace
+        .filter(line => {
+          // Filter out truly empty lines and lines with only commas/semicolons (empty CSV rows)
+          return line.length > 0 && !/^[,;\s]*$/.test(line);
+        });
+      
+      console.log(`CSV file analysis: ${lines.length} total lines, ${Math.max(lines.length - 1, 0)} data rows`);
+      
       // Subtract 1 for header row, ensure minimum of 0
       return Math.max(lines.length - 1, 0);
     } catch (error) {
+      console.error('Error estimating file count:', error);
       return 0;
     }
   };
