@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider } from './contexts/AuthContext';
+import { ToastProvider } from './components/UI/Toast';
 import Header from './components/Layout/Header';
 import FileDropzone from './components/Upload/FileDropzone';
 import ProgressBar from './components/Processing/ProgressBar';
@@ -11,6 +12,7 @@ import ProfileEdit from './components/Dashboard/ProfileEdit';
 import AdminDashboard from './components/Admin/AdminDashboard';
 import AdminUsersList from './components/Admin/AdminUsersList';
 import AdminUserDetails from './components/Admin/AdminUserDetails';
+import AdminTiers from './components/Admin/AdminTiers';
 import APIService from './services/api';
 import './styles/themes.css';
 import './styles/components.css';
@@ -285,42 +287,48 @@ function App() {
   // Handle Google OAuth callback route
   if (currentPath.startsWith('/auth/google/callback')) {
     return (
-      <AuthProvider>
-        <div className="app">
-          <Header />
-          <main className="main-container">
-            <GoogleCallback />
-          </main>
-        </div>
-      </AuthProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <div className="app">
+            <Header />
+            <main className="main-container">
+              <GoogleCallback />
+            </main>
+          </div>
+        </AuthProvider>
+      </ToastProvider>
     );
   }
 
   // Handle Dashboard route
   if (currentPath === '/dashboard') {
     return (
-      <AuthProvider>
-        <div className="app">
-          <Header />
-          <main className="main-container">
-            <UserDashboard />
-          </main>
-        </div>
-      </AuthProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <div className="app">
+            <Header />
+            <main className="main-container">
+              <UserDashboard />
+            </main>
+          </div>
+        </AuthProvider>
+      </ToastProvider>
     );
   }
 
   // Handle Profile Edit route
   if (currentPath === '/profile') {
     return (
-      <AuthProvider>
-        <div className="app">
-          <Header />
-          <main className="main-container">
-            <ProfileEdit />
-          </main>
-        </div>
-      </AuthProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <div className="app">
+            <Header />
+            <main className="main-container">
+              <ProfileEdit />
+            </main>
+          </div>
+        </AuthProvider>
+      </ToastProvider>
     );
   }
 
@@ -328,14 +336,16 @@ function App() {
   if (currentPath === '/admin') {
     console.log('✓ Rendering AdminDashboard for path:', currentPath);
     return (
-      <AuthProvider>
-        <div className="app">
-          <Header />
-          <main className="main-container admin-main-container">
-            <AdminDashboard />
-          </main>
-        </div>
-      </AuthProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <div className="app">
+            <Header />
+            <main className="main-container admin-main-container">
+              <AdminDashboard />
+            </main>
+          </div>
+        </AuthProvider>
+      </ToastProvider>
     );
   }
 
@@ -343,14 +353,16 @@ function App() {
   if (currentPath === '/admin/users') {
     console.log('✓ Rendering AdminUsersList for path:', currentPath);
     return (
-      <AuthProvider>
-        <div className="app">
-          <Header />
-          <main className="main-container admin-main-container">
-            <AdminUsersList />
-          </main>
-        </div>
-      </AuthProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <div className="app">
+            <Header />
+            <main className="main-container admin-main-container">
+              <AdminUsersList />
+            </main>
+          </div>
+        </AuthProvider>
+      </ToastProvider>
     );
   }
 
@@ -358,23 +370,43 @@ function App() {
   if (currentPath.startsWith('/admin/users/') && currentPath.split('/').length === 4) {
     console.log('✓ Rendering AdminUserDetails for path:', currentPath);
     return (
-      <AuthProvider>
-        <div className="app">
-          <Header />
-          <main className="main-container admin-main-container">
-            <AdminUserDetails />
-          </main>
-        </div>
-      </AuthProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <div className="app">
+            <Header />
+            <main className="main-container admin-main-container">
+              <AdminUserDetails />
+            </main>
+          </div>
+        </AuthProvider>
+      </ToastProvider>
+    );
+  }
+
+  // Handle Admin Tiers route
+  if (currentPath === '/admin/tiers') {
+    console.log('✓ Rendering AdminTiers for path:', currentPath);
+    return (
+      <ToastProvider>
+        <AuthProvider>
+          <div className="app">
+            <Header />
+            <main className="main-container admin-main-container">
+              <AdminTiers />
+            </main>
+          </div>
+        </AuthProvider>
+      </ToastProvider>
     );
   }
 
 
   // Main application route
   return (
-    <AuthProvider>
-      <div className="app">
-        <Header />
+    <ToastProvider>
+      <AuthProvider>
+        <div className="app">
+          <Header />
         
         <main className="main-container">
         {/* Top Ad Banners */}
@@ -442,10 +474,11 @@ function App() {
         <div className="ads-bottom">
           <AdBanner size="medium" position="bottom-left" />
           <AdBanner size="medium" position="bottom-right" />
-        </div>
-      </main>
+          </div>
+        </main>
       </div>
     </AuthProvider>
+    </ToastProvider>
   );
 }
 

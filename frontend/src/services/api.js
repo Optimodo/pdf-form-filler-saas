@@ -562,6 +562,164 @@ class APIService {
   }
 
   /**
+   * List all subscription tiers
+   * @returns {Promise} - List of tiers
+   */
+  async listSubscriptionTiers() {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/admin/tiers`, {
+        method: 'GET',
+        headers: {
+          ...this.getAuthHeaders(),
+        },
+      });
+
+      if (!response.ok) {
+        throw await this.handleApiError(response, 'Failed to list subscription tiers');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('List Subscription Tiers Error:', error);
+      throw this.handleNetworkError(error, 'listing subscription tiers');
+    }
+  }
+
+  /**
+   * Get subscription tier details
+   * @param {string} tierId - Tier ID
+   * @returns {Promise} - Tier details
+   */
+  async getSubscriptionTier(tierId) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/admin/tiers/${tierId}`, {
+        method: 'GET',
+        headers: {
+          ...this.getAuthHeaders(),
+        },
+      });
+
+      if (!response.ok) {
+        throw await this.handleApiError(response, 'Failed to get subscription tier');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Get Subscription Tier Error:', error);
+      throw this.handleNetworkError(error, 'getting subscription tier');
+    }
+  }
+
+  /**
+   * Create a new subscription tier
+   * @param {Object} tierData - Tier data
+   * @returns {Promise} - Created tier
+   */
+  async createSubscriptionTier(tierData) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/admin/tiers`, {
+        method: 'POST',
+        headers: {
+          ...this.getAuthHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(tierData),
+      });
+
+      if (!response.ok) {
+        throw await this.handleApiError(response, 'Failed to create subscription tier');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Create Subscription Tier Error:', error);
+      throw this.handleNetworkError(error, 'creating subscription tier');
+    }
+  }
+
+  /**
+   * Update a subscription tier
+   * @param {string} tierId - Tier ID
+   * @param {Object} tierData - Updated tier data
+   * @returns {Promise} - Update result
+   */
+  async updateSubscriptionTier(tierId, tierData) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/admin/tiers/${tierId}`, {
+        method: 'PATCH',
+        headers: {
+          ...this.getAuthHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(tierData),
+      });
+
+      if (!response.ok) {
+        throw await this.handleApiError(response, 'Failed to update subscription tier');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Update Subscription Tier Error:', error);
+      throw this.handleNetworkError(error, 'updating subscription tier');
+    }
+  }
+
+  /**
+   * Delete a subscription tier
+   * @param {string} tierId - Tier ID
+   * @returns {Promise} - Delete result
+   */
+  async deleteSubscriptionTier(tierId) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/admin/tiers/${tierId}`, {
+        method: 'DELETE',
+        headers: {
+          ...this.getAuthHeaders(),
+        },
+      });
+
+      if (!response.ok) {
+        throw await this.handleApiError(response, 'Failed to delete subscription tier');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Delete Subscription Tier Error:', error);
+      throw this.handleNetworkError(error, 'deleting subscription tier');
+    }
+  }
+
+  /**
+   * Get activity logs for a user
+   * @param {string} userId - User ID
+   * @param {number} limit - Maximum number of logs to return
+   * @param {number} skip - Number of logs to skip
+   * @returns {Promise} - Activity logs
+   */
+  async getUserActivityLogs(userId, limit = 100, skip = 0) {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/admin/users/${userId}/activity-logs?limit=${limit}&skip=${skip}`,
+        {
+          headers: {
+            ...this.getAuthHeaders(),
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw await this.handleApiError(response, 'Failed to get activity logs');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Get Activity Logs Error:', error);
+      throw this.handleNetworkError(error, 'getting activity logs');
+    }
+  }
+
+  /**
    * Remove custom limits from a user
    * @param {string} userId - User ID
    * @returns {Promise} - Update result

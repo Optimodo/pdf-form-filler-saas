@@ -85,7 +85,7 @@ function AdminUsersList() {
 
         <div className="tier-filters">
           <span>Filter by tier:</span>
-          {['free', 'basic', 'pro', 'enterprise'].map(tier => (
+          {['free', 'member', 'pro', 'enterprise'].map(tier => (
             <button
               key={tier}
               onClick={() => handleTierFilter(tier)}

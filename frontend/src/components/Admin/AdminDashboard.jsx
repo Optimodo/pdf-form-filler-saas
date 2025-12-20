@@ -132,6 +132,14 @@ function AdminDashboard() {
         >
           Manage Users
         </button>
+        <button
+          onClick={() => {
+            window.location.pathname = '/admin/tiers';
+          }}
+          className="btn-primary"
+        >
+          Manage Subscription Tiers
+        </button>
       </div>
     </div>
   );

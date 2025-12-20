@@ -22,11 +22,11 @@ VALUES
   (gen_random_uuid(), 'free.user@test.com', '', true, false, true, 'free', 5, now(), now()),
   (gen_random_uuid(), 'test.user1@test.com', '', true, false, true, 'free', 8, now(), now());
 
--- Basic tier users
+-- Member tier users
 INSERT INTO users (id, email, hashed_password, is_active, is_superuser, is_verified, subscription_tier, credits_remaining, created_at, updated_at)
 VALUES 
-  (gen_random_uuid(), 'basic.user@test.com', '', true, false, true, 'basic', 50, now(), now()),
-  (gen_random_uuid(), 'john.doe@test.com', '', true, false, true, 'basic', 25, now(), now());
+  (gen_random_uuid(), 'member.user@test.com', '', true, false, true, 'member', 50, now(), now()),
+  (gen_random_uuid(), 'john.doe@test.com', '', true, false, true, 'member', 25, now(), now());
 
 -- Pro tier users
 INSERT INTO users (id, email, hashed_password, is_active, is_superuser, is_verified, subscription_tier, credits_remaining, is_premium, created_at, updated_at)
@@ -50,12 +50,12 @@ VALUES
 The script creates users with these characteristics:
 
 - **free.user@test.com** - Free tier, 5 credits
-- **basic.user@test.com** - Basic tier, 50 credits
+- **member.user@test.com** - Member tier, 50 credits
 - **pro.user@test.com** - Pro tier, 200 credits
 - **enterprise.user@test.com** - Enterprise tier, 1000 credits
 - **inactive.user@test.com** - Inactive account
 - **custom.limits@test.com** - Pro tier with custom limits enabled
-- **john.doe@test.com** - Basic tier user
+- **john.doe@test.com** - Member tier user
 - **jane.smith@test.com** - Pro tier user
 - **test.user1@test.com** - Free tier user
 - **test.user2@test.com** - Free tier user (low credits)

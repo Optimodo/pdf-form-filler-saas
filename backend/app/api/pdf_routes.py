@@ -21,6 +21,7 @@ from ..core.pdf_processor import process_pdf_batch
 from ..core.progress_tracker import progress_tracker
 from ..core.user_limits import get_user_limits_from_user, get_anonymous_user_limits, validate_file_size
 from ..core.file_manager import file_manager
+from ..core.activity_logger import activity_logger
 from ..auth import current_active_user
 from ..models import User
 from ..database import get_async_session
@@ -79,6 +80,7 @@ async def get_optional_current_user(
 
 @router.post("/process-batch")
 async def process_pdf_batch_endpoint(
+    request: Request,
     template: UploadFile = File(..., description="PDF template file"),
     csv_data: UploadFile = File(..., description="CSV data file"),
     output_name: Optional[str] = Form(None, description="Custom output directory name"),
@@ -215,14 +217,36 @@ async def process_pdf_batch_endpoint(
             
             logger.info(f"Batch processing completed: {result['successful_count']} of {result['total_count']} PDFs")
             
+        # Extract IP address for logging
+        processing_ip = None
+        if request:
+            req_meta = activity_logger.extract_request_metadata(request)
+            processing_ip = req_meta.get("ip_address")
+        
         # Create processing job record for tracking and history
-        await file_manager.create_processing_job_record(
+        job = await file_manager.create_processing_job_record(
             session=session,
             user=current_user,
             template_file=template_file,
             csv_file=csv_file,
             session_id=session_id,
-            result=result
+            result=result,
+            processing_ip=processing_ip
+        )
+        
+        # Log the activity
+        await activity_logger.log_pdf_processed(
+            session=session,
+            user_id=current_user.id if current_user else None,
+            job_id=job.id,
+            pdf_count=result.get('total_count', 0),
+            successful_count=result.get('successful_count', 0),
+            request=request,
+            additional_metadata={
+                "template_filename": template_file.original_filename,
+                "csv_filename": csv_file.original_filename,
+                "processing_time": result.get('processing_time', 0),
+            }
         )
         
         return result

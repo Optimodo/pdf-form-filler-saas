@@ -5,13 +5,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from .api.pdf_routes import router as pdf_router
 from .api.auth_routes import router as auth_router
 from .api.admin_routes import router as admin_router
-from .database import create_db_and_tables
+from .database import create_db_and_tables, get_async_session
+from .core.user_limits import refresh_tier_cache
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Create database tables on startup."""
+    """Create database tables on startup and refresh tier cache."""
     await create_db_and_tables()
+    # Refresh tier cache from database
+    async for session in get_async_session():
+        try:
+            await refresh_tier_cache(session)
+        except Exception as e:
+            # If table doesn't exist yet or no tiers, that's okay - cache will use fallbacks
+            print(f"Note: Could not refresh tier cache on startup: {e}")
+        break
     yield
 
 

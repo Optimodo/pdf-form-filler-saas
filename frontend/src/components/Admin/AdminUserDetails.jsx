@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import APIService from '../../services/api';
+import InlineMessage from '../UI/InlineMessage';
 import './AdminUserDetails.css';
 
 function AdminUserDetails() {
@@ -9,15 +10,36 @@ function AdminUserDetails() {
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [message, setMessage] = useState(null);
+  const [messageType, setMessageType] = useState('success');
   const [actionLoading, setActionLoading] = useState(false);
+  const [pendingTierChange, setPendingTierChange] = useState(null); // Store tier that's pending confirmation
   const [editingLimits, setEditingLimits] = useState(false);
   const [limitValues, setLimitValues] = useState({});
+  const [reasonInput, setReasonInput] = useState(''); // For inline reason input
+  const [showReasonInput, setShowReasonInput] = useState(false); // Show reason input when saving limits
+  const [activityLogs, setActivityLogs] = useState([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+  const [showActivityLogs, setShowActivityLogs] = useState(false);
 
   useEffect(() => {
     if (userId) {
       loadUserDetails();
     }
   }, [userId]);
+
+  const loadActivityLogs = async () => {
+    try {
+      setLoadingLogs(true);
+      const data = await APIService.getUserActivityLogs(userId, 100, 0);
+      setActivityLogs(data.logs || []);
+    } catch (err) {
+      console.error('Failed to load activity logs:', err);
+      showMessage(`Failed to load activity logs: ${err.message}`, 'error');
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
 
   const loadUserDetails = async () => {
     try {
@@ -90,11 +112,16 @@ function AdminUserDetails() {
   // Helper to convert bytes to MB for input
   const bytesToMb = (bytes) => (bytes / (1024 * 1024)).toFixed(1);
 
-  const handleSaveLimits = async () => {
-    if (!window.confirm('Save these custom limits? This will override the subscription tier limits.')) return;
+  const handleSaveLimitsClick = () => {
+    // Show reason input inline
+    setShowReasonInput(true);
+  };
 
+  const handleSaveLimits = async () => {
+    const reason = reasonInput.trim() || 'Admin override';
     try {
       setActionLoading(true);
+      setShowReasonInput(false);
       
       // Convert MB values to bytes for file sizes
       const customLimits = {
@@ -106,62 +133,80 @@ function AdminUserDetails() {
         can_save_templates: limitValues.can_save_templates,
         can_use_api: limitValues.can_use_api,
       };
-
-      const reason = window.prompt('Reason for custom limits (optional):') || 'Admin override';
       
       await APIService.setUserCustomLimits(userId, customLimits, reason);
       await loadUserDetails();
       setEditingLimits(false);
-      window.alert('Custom limits saved successfully');
+      setReasonInput('');
+      showMessage('Custom limits saved successfully');
     } catch (err) {
-      window.alert(`Failed to save limits: ${err.message}`);
+      showMessage(`Failed to save limits: ${err.message}`, 'error');
     } finally {
       setActionLoading(false);
     }
   };
 
-  const handleRemoveCustomLimits = async () => {
-    if (!window.confirm('Remove custom limits? User will revert to subscription tier limits.')) return;
+  const handleCancelEditLimits = () => {
+    setEditingLimits(false);
+    setShowReasonInput(false);
+    setReasonInput('');
+    loadUserDetails(); // Reset to original values
+  };
 
+  const handleRemoveCustomLimits = async () => {
     try {
       setActionLoading(true);
       await APIService.removeUserCustomLimits(userId);
       await loadUserDetails();
-      window.alert('Custom limits removed successfully');
+      showMessage('Custom limits removed successfully');
     } catch (err) {
-      window.alert(`Failed to remove custom limits: ${err.message}`);
+      showMessage(`Failed to remove custom limits: ${err.message}`, 'error');
     } finally {
       setActionLoading(false);
     }
   };
 
-  const handleUpdateSubscription = async (newTier) => {
-    if (!window.confirm(`Change subscription to ${newTier}?`)) return;
+  const showMessage = (msg, type = 'success') => {
+    setMessage(msg);
+    setMessageType(type);
+    // Auto-clear after 5 seconds
+    setTimeout(() => setMessage(null), 5000);
+  };
 
+  const handleUpdateSubscriptionClick = (newTier) => {
+    // Set pending tier change to show inline confirmation
+    setPendingTierChange(newTier);
+  };
+
+  const handleConfirmTierChange = async () => {
+    const newTier = pendingTierChange;
+    setPendingTierChange(null);
     try {
       setActionLoading(true);
       await APIService.updateUserSubscription(userId, newTier);
       await loadUserDetails(); // Reload to show updated data
-      window.alert('Subscription updated successfully');
+      showMessage('Subscription updated successfully');
     } catch (err) {
-      window.alert(`Failed to update subscription: ${err.message}`);
+      showMessage(`Failed to update subscription: ${err.message}`, 'error');
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const handleCancelTierChange = () => {
+    setPendingTierChange(null);
   };
 
   const handleToggleActive = async () => {
     const newStatus = !userData.user.is_active;
     const action = newStatus ? 'activate' : 'deactivate';
-    if (!window.confirm(`Are you sure you want to ${action} this user?`)) return;
-
     try {
       setActionLoading(true);
       await APIService.toggleUserActive(userId, newStatus);
       await loadUserDetails();
-      window.alert(`User ${action}d successfully`);
+      showMessage(`User ${action}d successfully`);
     } catch (err) {
-      window.alert(`Failed to ${action} user: ${err.message}`);
+      showMessage(`Failed to ${action} user: ${err.message}`, 'error');
     } finally {
       setActionLoading(false);
     }
@@ -178,15 +223,20 @@ function AdminUserDetails() {
   if (error || !userData) {
     return (
       <div className="admin-user-details">
-        <div className="error-message">Error: {error || 'User not found'}</div>
-        <button
-          onClick={() => {
-            window.location.pathname = '/admin/users';
-          }}
-          className="btn-secondary"
-        >
-          ← Back to Users
-        </button>
+        <InlineMessage 
+          message={error || 'User not found'}
+          type="error"
+        />
+        <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+          <button
+            onClick={() => {
+              window.location.pathname = '/admin/users';
+            }}
+            className="btn-secondary"
+          >
+            ← Back to Users
+          </button>
+        </div>
       </div>
     );
   }
@@ -195,6 +245,13 @@ function AdminUserDetails() {
 
   return (
     <div className="admin-user-details">
+      <InlineMessage 
+        message={error ? `Error: ${error}` : message}
+        type={error ? 'error' : messageType}
+        onClose={error ? () => setError(null) : () => setMessage(null)}
+      />
+
+
       <div className="user-header">
         <div>
           <h1>{user.email}</h1>
@@ -242,15 +299,36 @@ function AdminUserDetails() {
                   {user.subscription_tier}
                 </span>
                 <div className="tier-buttons">
-                  {['free', 'basic', 'pro', 'enterprise'].map(tier => (
-                    <button
-                      key={tier}
-                      onClick={() => handleUpdateSubscription(tier)}
-                      disabled={actionLoading || tier === user.subscription_tier}
-                      className="btn-small"
-                    >
-                      {tier}
-                    </button>
+                  {['free', 'member', 'pro', 'enterprise'].map(tier => (
+                    <React.Fragment key={tier}>
+                      {pendingTierChange === tier ? (
+                        <div className="inline-confirmation">
+                          <span className="confirmation-message">Change to {tier}? (This will remove custom limits)</span>
+                          <button
+                            onClick={handleConfirmTierChange}
+                            disabled={actionLoading}
+                            className="btn-primary btn-small"
+                          >
+                            Confirm
+                          </button>
+                          <button
+                            onClick={handleCancelTierChange}
+                            disabled={actionLoading}
+                            className="btn-secondary btn-small"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => handleUpdateSubscriptionClick(tier)}
+                          disabled={actionLoading || tier === user.subscription_tier || pendingTierChange !== null}
+                          className="btn-small"
+                        >
+                          {tier}
+                        </button>
+                      )}
+                    </React.Fragment>
                   ))}
                 </div>
               </div>
@@ -297,23 +375,56 @@ function AdminUserDetails() {
                 </>
               ) : (
                 <>
-                  <button
-                    onClick={handleSaveLimits}
-                    className="btn-primary"
-                    disabled={actionLoading}
-                  >
-                    Save Limits
-                  </button>
-                  <button
-                    onClick={() => {
-                      setEditingLimits(false);
-                      loadUserDetails(); // Reset to original values
-                    }}
-                    className="btn-secondary"
-                    disabled={actionLoading}
-                  >
-                    Cancel
-                  </button>
+                  {showReasonInput ? (
+                    <div className="inline-reason-input">
+                      <input
+                        type="text"
+                        placeholder="Reason for custom limits (optional)"
+                        value={reasonInput}
+                        onChange={(e) => setReasonInput(e.target.value)}
+                        className="reason-input"
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter') {
+                            handleSaveLimits();
+                          }
+                        }}
+                      />
+                      <button
+                        onClick={handleSaveLimits}
+                        className="btn-primary"
+                        disabled={actionLoading}
+                      >
+                        Confirm Changes
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowReasonInput(false);
+                          setReasonInput('');
+                        }}
+                        className="btn-secondary"
+                        disabled={actionLoading}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        onClick={handleSaveLimitsClick}
+                        className="btn-primary"
+                        disabled={actionLoading}
+                      >
+                        Save Limits
+                      </button>
+                      <button
+                        onClick={handleCancelEditLimits}
+                        className="btn-secondary"
+                        disabled={actionLoading}
+                      >
+                        Discard Changes
+                      </button>
+                    </>
+                  )}
                 </>
               )}
             </div>
@@ -472,6 +583,67 @@ function AdminUserDetails() {
             </div>
           </section>
         )}
+
+        {/* Activity Log History */}
+        <section className="info-section">
+          <div className="section-header">
+            <h2>Activity History</h2>
+            <button
+              onClick={() => {
+                if (!showActivityLogs) {
+                  loadActivityLogs();
+                }
+                setShowActivityLogs(!showActivityLogs);
+              }}
+              className="btn-secondary"
+            >
+              {showActivityLogs ? 'Hide' : 'Show'} Activity Logs
+            </button>
+          </div>
+          {showActivityLogs && (
+            <div className="activity-logs">
+              {loadingLogs ? (
+                <div className="loading">Loading activity logs...</div>
+              ) : activityLogs.length === 0 ? (
+                <div className="no-logs">No activity logs found</div>
+              ) : (
+                <div className="logs-list">
+                  {activityLogs.map(log => (
+                    <div key={log.id} className="log-item">
+                      <div className="log-header">
+                        <span className={`log-category log-category-${log.category}`}>
+                          {log.category}
+                        </span>
+                        <span className="log-type">{log.activity_type.replace(/_/g, ' ')}</span>
+                        <span className="log-date">{new Date(log.created_at).toLocaleString()}</span>
+                      </div>
+                      <div className="log-action">{log.action}</div>
+                      {log.description && (
+                        <div className="log-description">{log.description}</div>
+                      )}
+                      {log.reason && (
+                        <div className="log-reason">
+                          <strong>Reason:</strong> {log.reason}
+                        </div>
+                      )}
+                      {log.changes && (
+                        <div className="log-changes">
+                          <strong>Changes:</strong>
+                          <pre>{JSON.stringify(log.changes, null, 2)}</pre>
+                        </div>
+                      )}
+                      <div className="log-metadata">
+                        {log.ip_address && <span>IP: {log.ip_address}</span>}
+                        {log.country && <span>Country: {log.country}</span>}
+                        {log.actor_type && <span>Actor: {log.actor_type}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );

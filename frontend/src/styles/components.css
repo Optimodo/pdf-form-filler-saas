@@ -371,6 +371,18 @@
   margin: 2rem 0;
 }
 
+/* Remove margin in specific contexts */
+.section-actions .btn-primary,
+.section-actions .btn-secondary,
+.header-actions .btn-primary,
+.header-actions .btn-secondary,
+.inline-confirmation .btn-primary,
+.inline-confirmation .btn-secondary,
+.inline-reason-input .btn-primary,
+.inline-reason-input .btn-secondary {
+  margin: 0;
+}
+
 .btn-primary:hover {
   background-color: var(--color-accent-hover);
   box-shadow: var(--shadow-md);
@@ -1168,11 +1180,17 @@
   cursor: pointer;
   transition: var(--transition);
   font-weight: 500;
+  margin: 0;
 }
 
 .btn-secondary:hover {
   background-color: var(--color-bg-tertiary);
   border-color: var(--color-border-hover);
+}
+
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Tabs */

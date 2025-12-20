@@ -1,11 +1,15 @@
 """
 User limits and restrictions based on subscription tiers.
 
-This module defines file size limits, processing limits, and other restrictions
-that vary based on user subscription levels.
+This module provides functions to get user limits from database-stored tier configurations,
+with fallback to cached values for backwards compatibility.
 """
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from dataclasses import dataclass
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+
+from ..models import SubscriptionTier
 
 
 @dataclass
@@ -31,82 +35,103 @@ class UserLimits:
     max_total_storage_mb: int
 
 
-# Define limits for each subscription tier
-SUBSCRIPTION_LIMITS: Dict[str, UserLimits] = {
-    "free": UserLimits(
-        max_pdf_size=1 * 1024 * 1024,      # 1 MB
-        max_csv_size=250 * 1024,           # 250 KB
-        max_daily_jobs=3,
-        max_monthly_jobs=10,
-        max_files_per_job=50,              # Limit bulk processing
-        can_save_templates=False,
-        can_use_api=False,
-        priority_processing=False,
-        max_saved_templates=0,
-        max_total_storage_mb=0,
-    ),
-    
-    "basic": UserLimits(
-        max_pdf_size=5 * 1024 * 1024,      # 5 MB
-        max_csv_size=1 * 1024 * 1024,      # 1 MB
-        max_daily_jobs=20,
-        max_monthly_jobs=100,
-        max_files_per_job=200,
-        can_save_templates=True,
-        can_use_api=False,
-        priority_processing=False,
-        max_saved_templates=5,
-        max_total_storage_mb=50,
-    ),
-    
-    "pro": UserLimits(
-        max_pdf_size=20 * 1024 * 1024,     # 20 MB
-        max_csv_size=5 * 1024 * 1024,      # 5 MB
-        max_daily_jobs=100,
-        max_monthly_jobs=1000,
-        max_files_per_job=1000,
-        can_save_templates=True,
-        can_use_api=True,
-        priority_processing=True,
-        max_saved_templates=50,
-        max_total_storage_mb=500,
-    ),
-    
-    "enterprise": UserLimits(
-        max_pdf_size=100 * 1024 * 1024,    # 100 MB
-        max_csv_size=25 * 1024 * 1024,     # 25 MB
-        max_daily_jobs=1000,
-        max_monthly_jobs=10000,
-        max_files_per_job=10000,
-        can_save_templates=True,
-        can_use_api=True,
-        priority_processing=True,
-        max_saved_templates=500,
-        max_total_storage_mb=5000,
+# Fallback limits cache (populated from database on startup or tier updates)
+_tier_cache: Dict[str, UserLimits] = {}
+
+
+async def refresh_tier_cache(session: AsyncSession) -> None:
+    """Refresh the in-memory tier cache from database."""
+    global _tier_cache
+    result = await session.execute(
+        select(SubscriptionTier).where(SubscriptionTier.is_active == True)
     )
-}
+    tiers = result.scalars().all()
+    
+    _tier_cache.clear()
+    for tier in tiers:
+        _tier_cache[tier.tier_key] = UserLimits(
+            max_pdf_size=tier.max_pdf_size,
+            max_csv_size=tier.max_csv_size,
+            max_daily_jobs=tier.max_daily_jobs,
+            max_monthly_jobs=tier.max_monthly_jobs,
+            max_files_per_job=tier.max_files_per_job,
+            can_save_templates=tier.can_save_templates,
+            can_use_api=tier.can_use_api,
+            priority_processing=tier.priority_processing,
+            max_saved_templates=tier.max_saved_templates,
+            max_total_storage_mb=tier.max_total_storage_mb,
+        )
+
+
+async def get_tier_limits_from_db(session: AsyncSession, tier_key: str) -> Optional[UserLimits]:
+    """
+    Get tier limits from database.
+    
+    Args:
+        session: Database session
+        tier_key: Tier key (e.g., "free", "member", "pro", "enterprise")
+        
+    Returns:
+        UserLimits object or None if tier not found
+    """
+    result = await session.execute(
+        select(SubscriptionTier).where(
+            SubscriptionTier.tier_key == tier_key,
+            SubscriptionTier.is_active == True
+        )
+    )
+    tier = result.scalar_one_or_none()
+    
+    if not tier:
+        return None
+    
+    return UserLimits(
+        max_pdf_size=tier.max_pdf_size,
+        max_csv_size=tier.max_csv_size,
+        max_daily_jobs=tier.max_daily_jobs,
+        max_monthly_jobs=tier.max_monthly_jobs,
+        max_files_per_job=tier.max_files_per_job,
+        can_save_templates=tier.can_save_templates,
+        can_use_api=tier.can_use_api,
+        priority_processing=tier.priority_processing,
+        max_saved_templates=tier.max_saved_templates,
+        max_total_storage_mb=tier.max_total_storage_mb,
+    )
+
+
+# Fallback limits if database tier not found (used before cache is populated)
+_FALLBACK_LIMITS = UserLimits(
+    max_pdf_size=1 * 1024 * 1024,      # 1 MB (free tier defaults)
+    max_csv_size=250 * 1024,           # 250 KB
+    max_daily_jobs=3,
+    max_monthly_jobs=10,
+    max_files_per_job=50,
+    can_save_templates=False,
+    can_use_api=False,
+    priority_processing=False,
+    max_saved_templates=0,
+    max_total_storage_mb=0,
+)
 
 
 def get_user_limits(subscription_tier: str, custom_overrides=None) -> UserLimits:
     """
     Get user limits for a specific subscription tier with optional custom overrides.
+    Uses in-memory cache of tier limits (refreshed from database).
     
     Args:
-        subscription_tier: The user's subscription tier (free, basic, pro, enterprise)
+        subscription_tier: The user's subscription tier (e.g., "free", "member", "pro", "enterprise")
         custom_overrides: Optional dict or User object with custom limit overrides
         
     Returns:
         UserLimits object with the appropriate limits (including any custom overrides)
-        
-    Raises:
-        ValueError: If the subscription tier is not recognized
     """
-    if subscription_tier not in SUBSCRIPTION_LIMITS:
-        # Default to free tier if unknown
-        subscription_tier = "free"
-    
-    # Start with base tier limits
-    base_limits = SUBSCRIPTION_LIMITS[subscription_tier]
+    # Get base limits from cache, or fallback if cache not populated
+    if subscription_tier in _tier_cache:
+        base_limits = _tier_cache[subscription_tier]
+    else:
+        # Fallback to free tier limits if tier not found
+        base_limits = _tier_cache.get("free", _FALLBACK_LIMITS)
     
     # If no custom overrides, return base limits
     if not custom_overrides:
@@ -131,7 +156,7 @@ def get_user_limits(subscription_tier: str, custom_overrides=None) -> UserLimits
             max_total_storage_mb=base_limits.max_total_storage_mb,  # This remains tier-based for now
         )
     
-    # Handle dict-style overrides (for future admin interfaces)
+    # Handle dict-style overrides (for admin interfaces)
     elif isinstance(custom_overrides, dict):
         return UserLimits(
             max_pdf_size=custom_overrides.get('max_pdf_size', base_limits.max_pdf_size),

@@ -14,6 +14,47 @@ import uuid
 from .database import Base
 
 
+class SubscriptionTier(Base):
+    """
+    Subscription tier configuration stored in database.
+    Allows admin to manage tier names, limits, and add/remove tiers.
+    """
+    __tablename__ = "subscription_tiers"
+    
+    id: UUID = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    
+    # Tier identification
+    tier_key: str = Column(String(50), unique=True, nullable=False, index=True)  # e.g., "free", "member", "pro", "enterprise"
+    display_name: str = Column(String(100), nullable=False)  # e.g., "Free", "Member", "Pro", "Enterprise"
+    description: Optional[str] = Column(Text, nullable=True)
+    
+    # File size limits (in bytes)
+    max_pdf_size: int = Column(Integer, nullable=False)
+    max_csv_size: int = Column(Integer, nullable=False)
+    
+    # Processing limits
+    max_daily_jobs: int = Column(Integer, nullable=False)
+    max_monthly_jobs: int = Column(Integer, nullable=False)
+    max_files_per_job: int = Column(Integer, nullable=False)
+    
+    # Feature access
+    can_save_templates: bool = Column(Boolean, default=False, nullable=False)
+    can_use_api: bool = Column(Boolean, default=False, nullable=False)
+    priority_processing: bool = Column(Boolean, default=False, nullable=False)
+    
+    # Storage limits
+    max_saved_templates: int = Column(Integer, default=0, nullable=False)
+    max_total_storage_mb: int = Column(Integer, default=0, nullable=False)
+    
+    # Tier ordering and visibility
+    display_order: int = Column(Integer, default=0, nullable=False)  # For sorting in UI
+    is_active: bool = Column(Boolean, default=True, nullable=False)  # Can disable tiers without deleting
+    
+    # Timestamps
+    created_at: datetime = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: datetime = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
 class User(SQLAlchemyBaseUserTableUUID, Base):
     """
     User model extending FastAPI-Users base model.
@@ -181,3 +222,55 @@ class OAuthAccount(SQLAlchemyBaseOAuthAccountTableUUID, Base):
     
     # Relationships
     user = relationship("User", back_populates="oauth_accounts")
+
+
+class ActivityLog(Base):
+    """
+    Comprehensive audit log for all system activities.
+    
+    Tracks user actions, admin changes, system events, PDF processing,
+    subscriptions, payments, and any other significant activities.
+    """
+    __tablename__ = "activity_logs"
+    
+    id: UUID = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    
+    # Activity categorization
+    activity_type: str = Column(String(50), nullable=False, index=True)  # e.g., "user_registered", "admin_updated_limits", "pdf_processed", "subscription_changed"
+    category: str = Column(String(50), nullable=False, index=True)  # e.g., "user", "admin", "system", "payment", "pdf"
+    
+    # User identification (can be None for system/admin-only actions)
+    user_id: Optional[UUID] = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    target_user_id: Optional[UUID] = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)  # For admin actions on other users
+    
+    # Actor identification (who performed the action)
+    actor_id: Optional[UUID] = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)  # Admin who made the change
+    actor_type: str = Column(String(20), default="user", nullable=False)  # "user", "admin", "system"
+    
+    # Activity details
+    action: str = Column(String(100), nullable=False)  # Brief description: "Updated subscription tier", "Processed PDF batch"
+    description: Optional[str] = Column(Text, nullable=True)  # Detailed description
+    reason: Optional[str] = Column(Text, nullable=True)  # Reason provided (e.g., admin reason for custom limits)
+    
+    # Metadata stored as JSON for flexibility
+    additional_metadata: Optional[str] = Column(Text, nullable=True)  # JSON string with additional data
+    
+    # Request/network metadata
+    ip_address: Optional[str] = Column(String(45), nullable=True, index=True)  # IPv4 or IPv6
+    user_agent: Optional[str] = Column(String(500), nullable=True)  # Browser/user agent string
+    country: Optional[str] = Column(String(2), nullable=True, index=True)  # ISO country code (can be derived from IP later)
+    
+    # Related entities (flexible foreign keys)
+    related_job_id: Optional[UUID] = Column(UUID(as_uuid=True), ForeignKey("processing_jobs.id", ondelete="SET NULL"), nullable=True)
+    related_tier_id: Optional[UUID] = Column(UUID(as_uuid=True), ForeignKey("subscription_tiers.id", ondelete="SET NULL"), nullable=True)
+    
+    # Changes tracking (for admin actions - what changed)
+    changes: Optional[str] = Column(Text, nullable=True)  # JSON string with before/after values
+    
+    # Timestamp
+    created_at: datetime = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    
+    # Relationships
+    user = relationship("User", foreign_keys=[user_id], backref="activity_logs")
+    target_user = relationship("User", foreign_keys=[target_user_id], backref="targeted_activity_logs")
+    actor = relationship("User", foreign_keys=[actor_id], backref="actor_activity_logs")
