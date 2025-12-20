@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .api.pdf_routes import router as pdf_router
 from .api.auth_routes import router as auth_router
+from .api.admin_routes import router as admin_router
 from .database import create_db_and_tables
 
 
@@ -33,6 +34,7 @@ app.add_middleware(
 # Include routes
 app.include_router(auth_router, prefix="/api")
 app.include_router(pdf_router)
+app.include_router(admin_router)  # Admin routes already have /api/admin prefix
 
 @app.get("/")
 async def root():

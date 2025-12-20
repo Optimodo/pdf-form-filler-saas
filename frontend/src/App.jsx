@@ -8,6 +8,9 @@ import AdBanner from './components/Ads/AdBanner';
 import GoogleCallback from './components/Auth/GoogleCallback';
 import UserDashboard from './components/Dashboard/UserDashboard';
 import ProfileEdit from './components/Dashboard/ProfileEdit';
+import AdminDashboard from './components/Admin/AdminDashboard';
+import AdminUsersList from './components/Admin/AdminUsersList';
+import AdminUserDetails from './components/Admin/AdminUserDetails';
 import APIService from './services/api';
 import './styles/themes.css';
 import './styles/components.css';
@@ -23,18 +26,35 @@ function App() {
   const [error, setError] = useState(null);
 
 
-  // Simple routing based on URL path
+  // Simple routing based on URL path - check on mount and route changes
   useEffect(() => {
-    const path = window.location.pathname;
-    setCurrentRoute(path);
+    const updateRoute = () => {
+      const path = window.location.pathname;
+      console.log('Setting route to:', path); // Debug logging
+      setCurrentRoute(path);
+    };
     
-    // Listen for route changes
+    // Set initial route
+    updateRoute();
+    
+    // Listen for route changes (browser back/forward)
     const handlePopState = () => {
-      setCurrentRoute(window.location.pathname);
+      updateRoute();
+    };
+    
+    // Also listen for navigation events (for programmatic navigation)
+    const handleLocationChange = () => {
+      updateRoute();
     };
     
     window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    // Check route periodically in case of programmatic navigation
+    const intervalId = setInterval(handleLocationChange, 100);
+    
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      clearInterval(intervalId);
+    };
   }, []);
 
   const validateFilename = (filename) => {
@@ -258,8 +278,12 @@ function App() {
 
   const canGenerate = pdfFile && csvFile && !isProcessing;
 
+  // Get current path directly for route matching (more reliable)
+  const currentPath = typeof window !== 'undefined' ? window.location.pathname : currentRoute;
+  console.log('Rendering with path:', currentPath, 'currentRoute state:', currentRoute);
+
   // Handle Google OAuth callback route
-  if (currentRoute.startsWith('/auth/google/callback')) {
+  if (currentPath.startsWith('/auth/google/callback')) {
     return (
       <AuthProvider>
         <div className="app">
@@ -273,7 +297,7 @@ function App() {
   }
 
   // Handle Dashboard route
-  if (currentRoute === '/dashboard') {
+  if (currentPath === '/dashboard') {
     return (
       <AuthProvider>
         <div className="app">
@@ -287,7 +311,7 @@ function App() {
   }
 
   // Handle Profile Edit route
-  if (currentRoute === '/profile') {
+  if (currentPath === '/profile') {
     return (
       <AuthProvider>
         <div className="app">
@@ -299,6 +323,52 @@ function App() {
       </AuthProvider>
     );
   }
+
+  // Handle Admin Dashboard route
+  if (currentPath === '/admin') {
+    console.log('✓ Rendering AdminDashboard for path:', currentPath);
+    return (
+      <AuthProvider>
+        <div className="app">
+          <Header />
+          <main className="main-container admin-main-container">
+            <AdminDashboard />
+          </main>
+        </div>
+      </AuthProvider>
+    );
+  }
+
+  // Handle Admin Users List route
+  if (currentPath === '/admin/users') {
+    console.log('✓ Rendering AdminUsersList for path:', currentPath);
+    return (
+      <AuthProvider>
+        <div className="app">
+          <Header />
+          <main className="main-container admin-main-container">
+            <AdminUsersList />
+          </main>
+        </div>
+      </AuthProvider>
+    );
+  }
+
+  // Handle Admin User Details route (format: /admin/users/{userId})
+  if (currentPath.startsWith('/admin/users/') && currentPath.split('/').length === 4) {
+    console.log('✓ Rendering AdminUserDetails for path:', currentPath);
+    return (
+      <AuthProvider>
+        <div className="app">
+          <Header />
+          <main className="main-container admin-main-container">
+            <AdminUserDetails />
+          </main>
+        </div>
+      </AuthProvider>
+    );
+  }
+
 
   // Main application route
   return (

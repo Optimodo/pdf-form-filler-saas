@@ -30,6 +30,12 @@ const UserInfo = () => {
     setShowDropdown(false);
   };
 
+  const handleAdmin = () => {
+    window.history.pushState({}, '', '/admin');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    setShowDropdown(false);
+  };
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -82,6 +88,12 @@ const UserInfo = () => {
                 <span className="dropdown-icon">📊</span>
                 Dashboard
               </button>
+              {user.is_superuser && (
+                <button className="dropdown-item admin-item" onClick={handleAdmin}>
+                  <span className="dropdown-icon">⚙️</span>
+                  Admin Panel
+                </button>
+              )}
               <button className="dropdown-item" onClick={handleLogout}>
                 <span className="dropdown-icon">↗️</span>
                 Sign Out

@@ -17,6 +17,7 @@ class UserRead(schemas.BaseUser[uuid.UUID]):
     credits_remaining: int = 10
     credits_used_this_month: int = 0
     is_premium: bool = False
+    is_superuser: bool = False  # Explicitly include superuser status
     last_login: Optional[datetime] = None
     created_at: datetime
 

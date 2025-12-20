@@ -407,6 +407,273 @@ class APIService {
     }
   }
 
+  // ==================== ADMIN API METHODS ====================
+
+  /**
+   * Check if current user is an admin
+   * @returns {Promise<boolean>} - True if user is admin
+   */
+  async isAdmin() {
+    try {
+      const user = await this.getCurrentUser();
+      return user.is_superuser === true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Get admin dashboard statistics
+   * @returns {Promise} - Dashboard stats
+   */
+  async getAdminDashboardStats() {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/admin/dashboard/stats`, {
+        headers: {
+          ...this.getAuthHeaders(),
+        },
+      });
+
+      if (!response.ok) {
+        throw await this.handleApiError(response, 'Failed to get dashboard stats');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Admin Dashboard Stats Error:', error);
+      throw this.handleNetworkError(error, 'getting dashboard stats');
+    }
+  }
+
+  /**
+   * List users with pagination and filtering
+   * @param {Object} params - Query parameters
+   * @returns {Promise} - List of users
+   */
+  async listUsers(params = {}) {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params.skip !== undefined) queryParams.append('skip', params.skip);
+      if (params.limit !== undefined) queryParams.append('limit', params.limit);
+      if (params.search) queryParams.append('search', params.search);
+      if (params.tier) queryParams.append('tier', params.tier);
+
+      const url = `${API_BASE_URL}/api/admin/users${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+      const response = await fetch(url, {
+        headers: {
+          ...this.getAuthHeaders(),
+        },
+      });
+
+      if (!response.ok) {
+        throw await this.handleApiError(response, 'Failed to list users');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('List Users Error:', error);
+      throw this.handleNetworkError(error, 'listing users');
+    }
+  }
+
+  /**
+   * Get detailed user information
+   * @param {string} userId - User ID
+   * @returns {Promise} - User details
+   */
+  async getUserDetails(userId) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/admin/users/${userId}`, {
+        headers: {
+          ...this.getAuthHeaders(),
+        },
+      });
+
+      if (!response.ok) {
+        throw await this.handleApiError(response, 'Failed to get user details');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Get User Details Error:', error);
+      throw this.handleNetworkError(error, 'getting user details');
+    }
+  }
+
+  /**
+   * Update user subscription tier
+   * @param {string} userId - User ID
+   * @param {string} tier - Subscription tier
+   * @returns {Promise} - Update result
+   */
+  async updateUserSubscription(userId, tier) {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/admin/users/${userId}/subscription?subscription_tier=${tier}`,
+        {
+          method: 'PATCH',
+          headers: {
+            ...this.getAuthHeaders(),
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw await this.handleApiError(response, 'Failed to update subscription');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Update Subscription Error:', error);
+      throw this.handleNetworkError(error, 'updating subscription');
+    }
+  }
+
+  /**
+   * Set custom limits for a user
+   * @param {string} userId - User ID
+   * @param {Object} customLimits - Custom limits object
+   * @param {string} reason - Reason for custom limits
+   * @returns {Promise} - Update result
+   */
+  async setUserCustomLimits(userId, customLimits, reason) {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/admin/users/${userId}/custom-limits?reason=${encodeURIComponent(reason)}`,
+        {
+          method: 'POST',
+          headers: {
+            ...this.getAuthHeaders(),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(customLimits),
+        }
+      );
+
+      if (!response.ok) {
+        throw await this.handleApiError(response, 'Failed to set custom limits');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Set Custom Limits Error:', error);
+      throw this.handleNetworkError(error, 'setting custom limits');
+    }
+  }
+
+  /**
+   * Remove custom limits from a user
+   * @param {string} userId - User ID
+   * @returns {Promise} - Update result
+   */
+  async removeUserCustomLimits(userId) {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/admin/users/${userId}/custom-limits`,
+        {
+          method: 'DELETE',
+          headers: {
+            ...this.getAuthHeaders(),
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw await this.handleApiError(response, 'Failed to remove custom limits');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Remove Custom Limits Error:', error);
+      throw this.handleNetworkError(error, 'removing custom limits');
+    }
+  }
+
+  /**
+   * Apply a limit template to a user
+   * @param {string} userId - User ID
+   * @param {string} templateName - Template name
+   * @param {string} reason - Optional reason
+   * @returns {Promise} - Update result
+   */
+  async applyLimitTemplate(userId, templateName, reason = null) {
+    try {
+      const queryParams = new URLSearchParams({ template_name: templateName });
+      if (reason) queryParams.append('reason', reason);
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/admin/users/${userId}/apply-template?${queryParams.toString()}`,
+        {
+          method: 'POST',
+          headers: {
+            ...this.getAuthHeaders(),
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw await this.handleApiError(response, 'Failed to apply template');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Apply Template Error:', error);
+      throw this.handleNetworkError(error, 'applying template');
+    }
+  }
+
+  /**
+   * Get available limit templates
+   * @returns {Promise} - Available templates
+   */
+  async getAvailableTemplates() {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/admin/templates/available`, {
+        headers: {
+          ...this.getAuthHeaders(),
+        },
+      });
+
+      if (!response.ok) {
+        throw await this.handleApiError(response, 'Failed to get templates');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Get Templates Error:', error);
+      throw this.handleNetworkError(error, 'getting templates');
+    }
+  }
+
+  /**
+   * Toggle user active status
+   * @param {string} userId - User ID
+   * @param {boolean} isActive - Active status
+   * @returns {Promise} - Update result
+   */
+  async toggleUserActive(userId, isActive) {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/admin/users/${userId}/activate?is_active=${isActive}`,
+        {
+          method: 'PATCH',
+          headers: {
+            ...this.getAuthHeaders(),
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw await this.handleApiError(response, 'Failed to update user status');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Toggle User Active Error:', error);
+      throw this.handleNetworkError(error, 'updating user status');
+    }
+  }
+
 }
 
 const apiService = new APIService();

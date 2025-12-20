@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import APIService from '../../services/api';
 
 const GoogleCallback = () => {
   const [status, setStatus] = useState('processing');
   const [error, setError] = useState('');
+  const { checkAuthStatus } = useAuth();
 
   useEffect(() => {
-    const handleCallback = () => {
+    const handleCallback = async () => {
       // Check URL parameters for success/error from backend redirect
       const urlParams = new URLSearchParams(window.location.search);
       const token = urlParams.get('token');
@@ -23,6 +25,13 @@ const GoogleCallback = () => {
         localStorage.setItem('access_token', token);
         localStorage.setItem('token_type', 'bearer');
         
+        // Fetch user data to ensure we have the latest info (including is_superuser)
+        try {
+          await checkAuthStatus();
+        } catch (err) {
+          console.error('Error fetching user data after OAuth:', err);
+        }
+        
         setStatus('success');
         
         // Redirect to main app after a brief delay
@@ -36,7 +45,7 @@ const GoogleCallback = () => {
     };
 
     handleCallback();
-  }, []);
+  }, [checkAuthStatus]);
 
   if (status === 'processing') {
     return (
