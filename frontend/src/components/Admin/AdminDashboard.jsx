@@ -8,6 +8,7 @@ function AdminDashboard() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [tiers, setTiers] = useState([]);
 
   useEffect(() => {
     // Check if user is authenticated and is a superuser
@@ -24,7 +25,20 @@ function AdminDashboard() {
     }
 
     loadDashboardStats();
+    loadTiers();
   }, [isAuthenticated, user]);
+
+  const loadTiers = async () => {
+    try {
+      const data = await APIService.listSubscriptionTiers();
+      const activeTiers = (data.tiers || [])
+        .filter(tier => tier.is_active)
+        .sort((a, b) => (a.display_order || 999) - (b.display_order || 999));
+      setTiers(activeTiers);
+    } catch (err) {
+      console.error('Failed to load tiers:', err);
+    }
+  };
 
   const loadDashboardStats = async () => {
     try {
@@ -38,6 +52,12 @@ function AdminDashboard() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const getTierDisplayName = (tierKey) => {
+    if (tierKey === 'anonymous') return 'Anonymous';
+    const tier = tiers.find(t => t.tier_key === tierKey);
+    return tier ? tier.display_name : tierKey;
   };
 
   if (loading) {
@@ -121,11 +141,61 @@ function AdminDashboard() {
           <div className="stat-value">{stats.storage?.total_display || '0 bytes'}</div>
           <div className="stat-label">Total Storage Used</div>
           <div className="stat-details">
-            <div>Input Files (Templates/CSV): {stats.storage?.input_display || '0 bytes'}</div>
-            <div>Output Files (PDF ZIPs): {stats.storage?.output_display || '0 bytes'}</div>
+            <div className="storage-breakdown">
+              <span>Input Files: {stats.storage?.input_display || '0 bytes'}</span>
+              <span>Output Files: {stats.storage?.output_display || '0 bytes'}</span>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Analytics by Tier Table */}
+      {(stats.jobs?.by_tier || stats.processing?.pdfs_by_tier) && (
+        <div className="analytics-section">
+          <h2>Analytics by Tier</h2>
+          <div className="analytics-table-container">
+            <table className="analytics-table">
+              <thead>
+                <tr>
+                  <th>Tier</th>
+                  <th>Users</th>
+                  <th>Jobs</th>
+                  <th>PDFs Processed</th>
+                </tr>
+              </thead>
+              <tbody>
+                {/* Get all unique tiers from both jobs and PDFs data */}
+                {(() => {
+                  const allTiers = new Set([
+                    ...Object.keys(stats.jobs?.by_tier || {}),
+                    ...Object.keys(stats.processing?.pdfs_by_tier || {}),
+                    ...Object.keys(stats.users?.by_tier || {})
+                  ]);
+                  const sortedTiers = Array.from(allTiers).sort((a, b) => {
+                    // Put anonymous last
+                    if (a === 'anonymous') return 1;
+                    if (b === 'anonymous') return -1;
+                    return a.localeCompare(b);
+                  });
+                  
+                  return sortedTiers.map(tier => (
+                    <tr key={tier}>
+                      <td>
+                        <span className={`tier-badge tier-${tier}`}>
+                          {getTierDisplayName(tier)}
+                        </span>
+                      </td>
+                      <td>{stats.users?.by_tier?.[tier] || 0}</td>
+                      <td>{stats.jobs?.by_tier?.[tier] || 0}</td>
+                      <td>{stats.processing?.pdfs_by_tier?.[tier] || 0}</td>
+                    </tr>
+                  ));
+                })()}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <div className="dashboard-actions">
         <button

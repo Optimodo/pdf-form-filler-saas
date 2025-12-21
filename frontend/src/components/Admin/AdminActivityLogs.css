@@ -272,6 +272,218 @@
   cursor: not-allowed;
 }
 
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+  border-bottom: 2px solid var(--border-color);
+}
+
+.tab-button {
+  padding: 0.75rem 1.5rem;
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--text-secondary);
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-bottom: -2px;
+}
+
+.tab-button:hover {
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+}
+
+.tab-button.active {
+  color: var(--primary-color);
+  border-bottom-color: var(--primary-color);
+}
+
+.tab-content {
+  width: 100%;
+}
+
+/* Compact logs list (similar to user details) */
+.logs-list-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.log-header-row {
+  font-weight: 600;
+  background: var(--card-bg);
+  border-bottom: 2px solid var(--border-color);
+  padding: 0.75rem 1rem;
+}
+
+.log-item {
+  display: grid;
+  grid-template-columns: 150px 1fr 2fr 180px;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg-secondary);
+  border-radius: 4px;
+  border-left: 3px solid var(--primary-color);
+  align-items: start;
+}
+
+.log-reason,
+.log-changes {
+  grid-column: 2 / -1;
+  margin-top: 0.5rem;
+}
+
+/* Jobs list compact */
+.jobs-filters {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-input {
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: var(--card-bg);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  min-width: 200px;
+  font-family: inherit;
+}
+
+.filter-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+.jobs-list-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+}
+
+.job-item-compact {
+  display: grid;
+  grid-template-columns: 200px 100px 1fr 1fr 80px 180px 100px;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg-secondary);
+  border-radius: 4px;
+  border-left: 3px solid var(--primary-color);
+  align-items: center;
+}
+
+.job-header-row {
+  font-weight: 600;
+  background: var(--card-bg);
+  border-bottom: 2px solid var(--border-color);
+  padding: 0.75rem 1rem;
+}
+
+.job-user-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.tier-badge-small {
+  display: inline-block;
+  padding: 0.15rem 0.4rem;
+  background: var(--primary-color);
+  color: white;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  margin-left: 0.5rem;
+}
+
+.anonymous-user {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.job-status {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.job-status-completed {
+  background: #e8f5e9;
+  color: #388e3c;
+}
+
+.job-status-failed {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.job-status-processing {
+  background: #fff3e0;
+  color: #f57c00;
+}
+
+.job-template-col,
+.job-csv-col {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.job-file-link {
+  color: var(--primary-color);
+  text-decoration: none;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  font-family: inherit;
+}
+
+.job-file-link:hover {
+  text-decoration: underline;
+}
+
+.job-pdfs-col {
+  text-align: center;
+  font-weight: 500;
+}
+
+.job-date-compact {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.job-actions-col {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.loading,
+.error-message {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-secondary);
+}
+
+.error-message {
+  color: var(--error-color, #c62828);
+}
+
 @media (max-width: 768px) {
   .admin-activity-logs {
     padding: 1rem;
@@ -282,21 +494,52 @@
     align-items: flex-start;
   }
 
-  .filters-section {
+  .tabs {
+    flex-direction: column;
+    border-bottom: none;
+  }
+
+  .tab-button {
+    border-bottom: none;
+    border-left: 3px solid transparent;
+    margin-bottom: 0;
+    margin-left: -1rem;
+    padding-left: 1rem;
+  }
+
+  .tab-button.active {
+    border-bottom-color: transparent;
+    border-left-color: var(--primary-color);
+  }
+
+  .jobs-filters {
     flex-direction: column;
   }
 
+  .filter-input,
   .filter-select {
     width: 100%;
+    min-width: unset;
   }
 
-  .log-header {
-    flex-direction: column;
-    align-items: flex-start;
+  .log-item {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
   }
 
-  .log-date {
-    margin-left: 0;
+  .job-item-compact {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+
+  .log-header-row,
+  .job-header-row {
+    display: none;
+  }
+
+  .log-date,
+  .job-date-compact {
+    text-align: left;
   }
 }
 

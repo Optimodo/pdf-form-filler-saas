@@ -457,6 +457,14 @@ class APIService {
       if (params.limit !== undefined) queryParams.append('limit', params.limit);
       if (params.search) queryParams.append('search', params.search);
       if (params.tier) queryParams.append('tier', params.tier);
+      if (params.min_credits_used !== undefined) queryParams.append('min_credits_used', params.min_credits_used);
+      if (params.max_credits_used !== undefined) queryParams.append('max_credits_used', params.max_credits_used);
+      if (params.min_credits_remaining !== undefined) queryParams.append('min_credits_remaining', params.min_credits_remaining);
+      if (params.max_credits_remaining !== undefined) queryParams.append('max_credits_remaining', params.max_credits_remaining);
+      if (params.min_job_count !== undefined) queryParams.append('min_job_count', params.min_job_count);
+      if (params.max_job_count !== undefined) queryParams.append('max_job_count', params.max_job_count);
+      if (params.sort_by) queryParams.append('sort_by', params.sort_by);
+      if (params.sort_order) queryParams.append('sort_order', params.sort_order);
 
       const url = `${API_BASE_URL}/api/admin/users${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
       const response = await fetch(url, {
@@ -774,6 +782,39 @@ class APIService {
    * @param {number} skip - Number of logs to skip
    * @returns {Promise} - Activity logs data
    */
+  async getAllJobs(page = 1, limit = 10, userEmail = null, userTier = null) {
+    try {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: limit.toString(),
+      });
+      
+      if (userEmail) {
+        params.append('user_email', userEmail);
+      }
+      
+      if (userTier) {
+        params.append('user_tier', userTier);
+      }
+      
+      const response = await fetch(`${API_BASE_URL}/api/admin/jobs?${params.toString()}`, {
+        method: 'GET',
+        headers: {
+          ...this.getAuthHeaders(),
+        },
+      });
+
+      if (!response.ok) {
+        throw await this.handleApiError(response, 'Failed to get jobs');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Get All Jobs Error:', error);
+      throw this.handleNetworkError(error, 'getting jobs');
+    }
+  }
+
   async getSystemActivityLogs(category = null, activityType = null, limit = 100, skip = 0) {
     try {
       let url = `${API_BASE_URL}/api/admin/activity-logs?limit=${limit}&skip=${skip}`;

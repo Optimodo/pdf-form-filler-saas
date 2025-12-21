@@ -7,13 +7,44 @@ function AdminUsersList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [pagination, setPagination] = useState({ skip: 0, limit: 50, total: 0 });
-  const [filters, setFilters] = useState({ search: '', tier: '' });
+  const [filters, setFilters] = useState({ 
+    search: '', 
+    tier: '',
+    min_credits_used: '',
+    max_credits_used: '',
+    min_credits_remaining: '',
+    max_credits_remaining: '',
+    min_job_count: '',
+    max_job_count: ''
+  });
+  const [numericFilterDrafts, setNumericFilterDrafts] = useState({
+    min_credits_used: '',
+    max_credits_used: '',
+    min_credits_remaining: '',
+    max_credits_remaining: '',
+    min_job_count: '',
+    max_job_count: ''
+  });
   const [availableTiers, setAvailableTiers] = useState([]);
+  const [sortBy, setSortBy] = useState(null);
+  const [sortOrder, setSortOrder] = useState('desc');
 
   useEffect(() => {
     loadUsers();
     loadTiers();
-  }, [pagination.skip, pagination.limit, filters.search, filters.tier]);
+  }, [pagination.skip, pagination.limit, filters.search, filters.tier, filters.min_credits_used, filters.max_credits_used, filters.min_credits_remaining, filters.max_credits_remaining, filters.min_job_count, filters.max_job_count, sortBy, sortOrder]);
+
+  // Sync draft values with active filters when filters change externally (e.g., clear)
+  useEffect(() => {
+    setNumericFilterDrafts({
+      min_credits_used: filters.min_credits_used,
+      max_credits_used: filters.max_credits_used,
+      min_credits_remaining: filters.min_credits_remaining,
+      max_credits_remaining: filters.max_credits_remaining,
+      min_job_count: filters.min_job_count,
+      max_job_count: filters.max_job_count
+    });
+  }, [filters.min_credits_used, filters.max_credits_used, filters.min_credits_remaining, filters.max_credits_remaining, filters.min_job_count, filters.max_job_count]);
 
   const loadTiers = async () => {
     try {
@@ -31,12 +62,28 @@ function AdminUsersList() {
   const loadUsers = async () => {
     try {
       setLoading(true);
-      const data = await APIService.listUsers({
+      const params = {
         skip: pagination.skip,
         limit: pagination.limit,
         search: filters.search || undefined,
         tier: filters.tier || undefined,
-      });
+      };
+      
+      // Add numeric filters only if they have values
+      if (filters.min_credits_used) params.min_credits_used = parseInt(filters.min_credits_used);
+      if (filters.max_credits_used) params.max_credits_used = parseInt(filters.max_credits_used);
+      if (filters.min_credits_remaining) params.min_credits_remaining = parseInt(filters.min_credits_remaining);
+      if (filters.max_credits_remaining) params.max_credits_remaining = parseInt(filters.max_credits_remaining);
+      if (filters.min_job_count) params.min_job_count = parseInt(filters.min_job_count);
+      if (filters.max_job_count) params.max_job_count = parseInt(filters.max_job_count);
+      
+      // Add sorting parameters
+      if (sortBy) {
+        params.sort_by = sortBy;
+        params.sort_order = sortOrder;
+      }
+      
+      const data = await APIService.listUsers(params);
       setUsers(data.users || []);
       setPagination(prev => ({ ...prev, total: data.total || 0 }));
       setError(null);
@@ -51,7 +98,6 @@ function AdminUsersList() {
   const handleSearch = (e) => {
     e.preventDefault();
     setPagination(prev => ({ ...prev, skip: 0 }));
-    loadUsers();
   };
 
   const handleTierFilter = (tier) => {
@@ -59,8 +105,63 @@ function AdminUsersList() {
     setPagination(prev => ({ ...prev, skip: 0 }));
   };
 
+  const handleNumericFilterDraftChange = (field, value) => {
+    // Only allow numeric input - update draft without triggering API call
+    if (value === '' || /^-?\d+$/.test(value)) {
+      setNumericFilterDrafts(prev => ({ ...prev, [field]: value }));
+    }
+  };
+
+  const applyNumericFilters = () => {
+    // Apply draft values to actual filters (triggers API call)
+    setFilters(prev => ({
+      ...prev,
+      min_credits_used: numericFilterDrafts.min_credits_used,
+      max_credits_used: numericFilterDrafts.max_credits_used,
+      min_credits_remaining: numericFilterDrafts.min_credits_remaining,
+      max_credits_remaining: numericFilterDrafts.max_credits_remaining,
+      min_job_count: numericFilterDrafts.min_job_count,
+      max_job_count: numericFilterDrafts.max_job_count
+    }));
+    setPagination(prev => ({ ...prev, skip: 0 }));
+  };
+
+  const clearNumericFilters = () => {
+    // Clear both drafts and active filters
+    setNumericFilterDrafts({
+      min_credits_used: '',
+      max_credits_used: '',
+      min_credits_remaining: '',
+      max_credits_remaining: '',
+      min_job_count: '',
+      max_job_count: ''
+    });
+    setFilters(prev => ({
+      ...prev,
+      min_credits_used: '',
+      max_credits_used: '',
+      min_credits_remaining: '',
+      max_credits_remaining: '',
+      min_job_count: '',
+      max_job_count: ''
+    }));
+    setPagination(prev => ({ ...prev, skip: 0 }));
+  };
+
   const handlePageChange = (newSkip) => {
     setPagination(prev => ({ ...prev, skip: newSkip }));
+  };
+
+  const handleSort = (field) => {
+    if (sortBy === field) {
+      // Toggle sort order if clicking the same field
+      setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
+    } else {
+      // Set new sort field, default to descending
+      setSortBy(field);
+      setSortOrder('desc');
+    }
+    setPagination(prev => ({ ...prev, skip: 0 }));
   };
 
   if (loading && users.length === 0) {
@@ -116,6 +217,84 @@ function AdminUsersList() {
             </button>
           ))}
         </div>
+
+        <div className="numeric-filters-section">
+          <div className="numeric-filters">
+            <div className="numeric-filter-group">
+              <label>Lifetime Credits Used:</label>
+              <input
+                type="number"
+                placeholder="Min"
+                value={numericFilterDrafts.min_credits_used}
+                onChange={(e) => handleNumericFilterDraftChange('min_credits_used', e.target.value)}
+                className="numeric-input"
+              />
+              <span>to</span>
+              <input
+                type="number"
+                placeholder="Max"
+                value={numericFilterDrafts.max_credits_used}
+                onChange={(e) => handleNumericFilterDraftChange('max_credits_used', e.target.value)}
+                className="numeric-input"
+              />
+            </div>
+
+            <div className="numeric-filter-group">
+              <label>Remaining Credits:</label>
+              <input
+                type="number"
+                placeholder="Min"
+                value={numericFilterDrafts.min_credits_remaining}
+                onChange={(e) => handleNumericFilterDraftChange('min_credits_remaining', e.target.value)}
+                className="numeric-input"
+              />
+              <span>to</span>
+              <input
+                type="number"
+                placeholder="Max"
+                value={numericFilterDrafts.max_credits_remaining}
+                onChange={(e) => handleNumericFilterDraftChange('max_credits_remaining', e.target.value)}
+                className="numeric-input"
+              />
+            </div>
+
+            <div className="numeric-filter-group">
+              <label>Total PDF Runs:</label>
+              <input
+                type="number"
+                placeholder="Min"
+                value={numericFilterDrafts.min_job_count}
+                onChange={(e) => handleNumericFilterDraftChange('min_job_count', e.target.value)}
+                className="numeric-input"
+              />
+              <span>to</span>
+              <input
+                type="number"
+                placeholder="Max"
+                value={numericFilterDrafts.max_job_count}
+                onChange={(e) => handleNumericFilterDraftChange('max_job_count', e.target.value)}
+                className="numeric-input"
+              />
+            </div>
+
+            <div className="numeric-filter-actions">
+              <button
+                type="button"
+                onClick={applyNumericFilters}
+                className="btn-primary"
+              >
+                Apply Filters
+              </button>
+              <button
+                type="button"
+                onClick={clearNumericFilters}
+                className="btn-secondary"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {error && (
@@ -134,7 +313,36 @@ function AdminUsersList() {
               <th>Name</th>
               <th>Tier</th>
               <th>Status</th>
-              <th>Credits</th>
+              <th 
+                className="numeric-col sortable" 
+                onClick={() => handleSort('credits_used_total')}
+                style={{ cursor: 'pointer', userSelect: 'none' }}
+              >
+                Credits Used
+                {sortBy === 'credits_used_total' && (
+                  <span className="sort-indicator">{sortOrder === 'desc' ? ' ↓' : ' ↑'}</span>
+                )}
+              </th>
+              <th 
+                className="numeric-col sortable" 
+                onClick={() => handleSort('credits_remaining')}
+                style={{ cursor: 'pointer', userSelect: 'none' }}
+              >
+                Credits Remaining
+                {sortBy === 'credits_remaining' && (
+                  <span className="sort-indicator">{sortOrder === 'desc' ? ' ↓' : ' ↑'}</span>
+                )}
+              </th>
+              <th 
+                className="numeric-col sortable" 
+                onClick={() => handleSort('total_pdf_runs')}
+                style={{ cursor: 'pointer', userSelect: 'none' }}
+              >
+                PDF Runs
+                {sortBy === 'total_pdf_runs' && (
+                  <span className="sort-indicator">{sortOrder === 'desc' ? ' ↓' : ' ↑'}</span>
+                )}
+              </th>
               <th>Custom Limits</th>
               <th>Created</th>
               <th>Actions</th>
@@ -156,7 +364,9 @@ function AdminUsersList() {
                   </span>
                   {user.is_superuser && <span className="admin-badge">Admin</span>}
                 </td>
-                <td>{user.credits_remaining}</td>
+                <td className="numeric-col">{user.credits_used_total || 0}</td>
+                <td className="numeric-col">{user.credits_remaining || 0}</td>
+                <td className="numeric-col">{user.total_pdf_runs || 0}</td>
                 <td>
                   {user.custom_limits_enabled ? (
                     <span className="custom-limits-badge">Yes</span>
@@ -208,5 +418,3 @@ function AdminUsersList() {
 }
 
 export default AdminUsersList;
-
-

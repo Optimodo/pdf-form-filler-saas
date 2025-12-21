@@ -5,97 +5,158 @@ import './AdminActivityLogs.css';
 
 function AdminActivityLogs() {
   const { user, isAuthenticated } = useAuth();
-  const [logs, setLogs] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [total, setTotal] = useState(0);
-  const [limit] = useState(100);
-  const [skip, setSkip] = useState(0);
-  const [categoryFilter, setCategoryFilter] = useState('');
-  const [activityTypeFilter, setActivityTypeFilter] = useState('');
-
+  const [activeTab, setActiveTab] = useState('admin'); // 'admin' or 'jobs'
+  
+  // Admin logs state
+  const [adminLogs, setAdminLogs] = useState([]);
+  const [loadingAdminLogs, setLoadingAdminLogs] = useState(true);
+  const [adminLogsError, setAdminLogsError] = useState(null);
+  const [adminLogsTotal, setAdminLogsTotal] = useState(0);
+  const [adminLogsSkip, setAdminLogsSkip] = useState(0);
+  const adminLogsLimit = 50;
+  
+  // PDF jobs state
+  const [jobs, setJobs] = useState([]);
+  const [loadingJobs, setLoadingJobs] = useState(true);
+  const [jobsError, setJobsError] = useState(null);
+  const [jobsPage, setJobsPage] = useState(1);
+  const [jobsPagination, setJobsPagination] = useState(null);
+  const jobsLimit = 10;
+  const [jobFilters, setJobFilters] = useState({
+    userEmail: '',
+    userTier: ''
+  });
+  
+  // Get subscription tiers for filter
+  const [tiers, setTiers] = useState([]);
+  
   useEffect(() => {
-    // Check if user is authenticated and is a superuser
     if (!isAuthenticated || !user) {
-      setError('You must be logged in to access the admin panel.');
-      setLoading(false);
+      setAdminLogsError('You must be logged in to access the admin panel.');
+      setLoadingAdminLogs(false);
       return;
     }
 
     if (!user.is_superuser) {
-      setError('Access denied. Admin privileges required.');
-      setLoading(false);
+      setAdminLogsError('Access denied. Admin privileges required.');
+      setLoadingAdminLogs(false);
       return;
     }
 
-    loadActivityLogs();
-  }, [isAuthenticated, user, skip, categoryFilter, activityTypeFilter]);
+    loadTiers();
+    if (activeTab === 'admin') {
+      loadAdminLogs();
+    } else {
+      loadJobs();
+    }
+  }, [isAuthenticated, user, activeTab, adminLogsSkip, jobsPage, jobFilters]);
 
-  const loadActivityLogs = async () => {
+  const loadTiers = async () => {
     try {
-      setLoading(true);
-      const category = categoryFilter || null;
-      const activityType = activityTypeFilter || null;
-      const data = await APIService.getSystemActivityLogs(category, activityType, limit, skip);
-      setLogs(data.logs || []);
-      setTotal(data.total || 0);
-      setError(null);
+      const data = await APIService.listSubscriptionTiers();
+      setTiers(data.tiers || []);
     } catch (err) {
-      setError(err.message || 'Failed to load activity logs');
-      console.error('Activity logs error:', err);
+      console.error('Error loading tiers:', err);
+    }
+  };
+
+  const loadAdminLogs = async () => {
+    try {
+      setLoadingAdminLogs(true);
+      // Only fetch admin-related activity logs
+      const data = await APIService.getSystemActivityLogs('admin', null, adminLogsLimit, adminLogsSkip);
+      setAdminLogs(data.logs || []);
+      setAdminLogsTotal(data.total || 0);
+      setAdminLogsError(null);
+    } catch (err) {
+      setAdminLogsError(err.message || 'Failed to load admin activity logs');
+      console.error('Admin logs error:', err);
     } finally {
-      setLoading(false);
+      setLoadingAdminLogs(false);
     }
   };
 
-  const handleCategoryFilterChange = (e) => {
-    setCategoryFilter(e.target.value);
-    setSkip(0); // Reset pagination when filter changes
-  };
-
-  const handleActivityTypeFilterChange = (e) => {
-    setActivityTypeFilter(e.target.value);
-    setSkip(0); // Reset pagination when filter changes
-  };
-
-  const handlePreviousPage = () => {
-    if (skip > 0) {
-      setSkip(Math.max(0, skip - limit));
+  const loadJobs = async () => {
+    try {
+      setLoadingJobs(true);
+      const data = await APIService.getAllJobs(
+        jobsPage,
+        jobsLimit,
+        jobFilters.userEmail || null,
+        jobFilters.userTier || null
+      );
+      setJobs(data.jobs || []);
+      setJobsPagination(data.pagination || null);
+      setJobsError(null);
+    } catch (err) {
+      setJobsError(err.message || 'Failed to load PDF jobs');
+      console.error('Jobs error:', err);
+    } finally {
+      setLoadingJobs(false);
     }
   };
 
-  const handleNextPage = () => {
-    if (skip + limit < total) {
-      setSkip(skip + limit);
+  const handleJobFilterChange = (field, value) => {
+    setJobFilters(prev => ({ ...prev, [field]: value }));
+    setJobsPage(1); // Reset to first page when filter changes
+  };
+
+  const handleFileDownload = async (url, filename) => {
+    try {
+      const response = await fetch(url, {
+        headers: APIService.getAuthHeaders(),
+      });
+      if (!response.ok) throw new Error('Download failed');
+      
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(downloadUrl);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error('Download error:', err);
+      alert('Failed to download file');
     }
   };
 
-  const formatChanges = (changes) => {
-    if (!changes) return null;
-    if (typeof changes === 'string') {
-      try {
-        changes = JSON.parse(changes);
-      } catch (e) {
-        return changes;
-      }
+  const handlePreviousAdminPage = () => {
+    if (adminLogsSkip > 0) {
+      setAdminLogsSkip(Math.max(0, adminLogsSkip - adminLogsLimit));
     }
-    return JSON.stringify(changes, null, 2);
   };
 
-  if (loading && logs.length === 0) {
-    return (
-      <div className="admin-activity-logs">
-        <div className="loading">Loading activity logs...</div>
-      </div>
-    );
-  }
+  const handleNextAdminPage = () => {
+    if (adminLogsSkip + adminLogsLimit < adminLogsTotal) {
+      setAdminLogsSkip(adminLogsSkip + adminLogsLimit);
+    }
+  };
 
-  if (error && logs.length === 0) {
+  const handlePreviousJobsPage = () => {
+    if (jobsPage > 1) {
+      setJobsPage(jobsPage - 1);
+    }
+  };
+
+  const handleNextJobsPage = () => {
+    if (jobsPagination && jobsPage < jobsPagination.total_pages) {
+      setJobsPage(jobsPage + 1);
+    }
+  };
+
+  const formatActivityType = (type) => {
+    return type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  };
+
+  if (adminLogsError && !user?.is_superuser) {
     return (
       <div className="admin-activity-logs">
         <h1>System Activity Logs</h1>
-        <div className="error-message">Error: {error}</div>
-        {error.includes('Access denied') || error.includes('must be logged in') ? (
+        <div className="error-message">Error: {adminLogsError}</div>
+        {adminLogsError.includes('Access denied') || adminLogsError.includes('must be logged in') ? (
           <button
             onClick={() => {
               window.location.pathname = '/';
@@ -105,7 +166,7 @@ function AdminActivityLogs() {
             Return to Home
           </button>
         ) : (
-          <button onClick={loadActivityLogs} className="btn-primary">Retry</button>
+          <button onClick={loadAdminLogs} className="btn-primary">Retry</button>
         )}
       </div>
     );
@@ -114,7 +175,7 @@ function AdminActivityLogs() {
   return (
     <div className="admin-activity-logs">
       <div className="header-section">
-        <h1>System Activity Logs</h1>
+        <h1>Activity Logs</h1>
         <button
           onClick={() => {
             window.location.pathname = '/admin';
@@ -125,119 +186,249 @@ function AdminActivityLogs() {
         </button>
       </div>
 
-      <div className="filters-section">
-        <div className="filter-group">
-          <label htmlFor="category-filter">Category:</label>
-          <select
-            id="category-filter"
-            value={categoryFilter}
-            onChange={handleCategoryFilterChange}
-            className="filter-select"
-          >
-            <option value="">All Categories</option>
-            <option value="admin">Admin</option>
-            <option value="system">System</option>
-            <option value="user">User</option>
-          </select>
-        </div>
-
-        <div className="filter-group">
-          <label htmlFor="activity-type-filter">Activity Type:</label>
-          <select
-            id="activity-type-filter"
-            value={activityTypeFilter}
-            onChange={handleActivityTypeFilterChange}
-            className="filter-select"
-          >
-            <option value="">All Types</option>
-            <option value="tier_updated">Tier Updated</option>
-            <option value="admin_action">Admin Action</option>
-            <option value="system_event">System Event</option>
-          </select>
-        </div>
+      {/* Tabs */}
+      <div className="tabs">
+        <button
+          className={`tab-button ${activeTab === 'admin' ? 'active' : ''}`}
+          onClick={() => setActiveTab('admin')}
+        >
+          Admin Activity Log
+        </button>
+        <button
+          className={`tab-button ${activeTab === 'jobs' ? 'active' : ''}`}
+          onClick={() => setActiveTab('jobs')}
+        >
+          PDF Job Activity Log
+        </button>
       </div>
 
-      {loading && logs.length > 0 && (
-        <div className="loading-overlay">Refreshing...</div>
+      {/* Admin Activity Log Tab */}
+      {activeTab === 'admin' && (
+        <div className="tab-content">
+          {loadingAdminLogs && adminLogs.length === 0 ? (
+            <div className="loading">Loading admin activity logs...</div>
+          ) : adminLogsError && adminLogs.length === 0 ? (
+            <div className="error-message">Error: {adminLogsError}</div>
+          ) : adminLogs.length === 0 ? (
+            <div className="no-logs">No admin activity logs found</div>
+          ) : (
+            <>
+              <div className="logs-summary">
+                Showing {adminLogs.length} of {adminLogsTotal} admin activity logs
+              </div>
+              
+              <div className="logs-list-compact">
+                {/* Header row */}
+                <div className="log-item log-header-row">
+                  <div>Type</div>
+                  <div>Action</div>
+                  <div>Description</div>
+                  <div>Date</div>
+                </div>
+                
+                {adminLogs.map(log => (
+                  <div key={log.id} className="log-item">
+                    <span className="log-type">{formatActivityType(log.activity_type)}</span>
+                    <div className="log-action">{log.action}</div>
+                    <div className="log-description">{log.description || '-'}</div>
+                    <span className="log-date">{new Date(log.created_at).toLocaleString()}</span>
+                    {log.reason && (
+                      <div className="log-reason">
+                        <strong>Reason:</strong> {log.reason}
+                      </div>
+                    )}
+                    {log.changes && (
+                      <div className="log-changes">
+                        <strong>Changes:</strong>
+                        <pre>{JSON.stringify(log.changes, null, 2)}</pre>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="pagination">
+                <button
+                  onClick={handlePreviousAdminPage}
+                  disabled={adminLogsSkip === 0}
+                  className="btn-secondary"
+                >
+                  Previous
+                </button>
+                <span className="pagination-info">
+                  Page {Math.floor(adminLogsSkip / adminLogsLimit) + 1} of {Math.ceil(adminLogsTotal / adminLogsLimit)}
+                </span>
+                <button
+                  onClick={handleNextAdminPage}
+                  disabled={adminLogsSkip + adminLogsLimit >= adminLogsTotal}
+                  className="btn-secondary"
+                >
+                  Next
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       )}
 
-      <div className="logs-summary">
-        Showing {logs.length} of {total} logs
-      </div>
+      {/* PDF Job Activity Log Tab */}
+      {activeTab === 'jobs' && (
+        <div className="tab-content">
+          {/* Filters */}
+          <div className="jobs-filters">
+            <div className="filter-group">
+              <label htmlFor="user-email-filter">User Email:</label>
+              <input
+                id="user-email-filter"
+                type="text"
+                value={jobFilters.userEmail}
+                onChange={(e) => handleJobFilterChange('userEmail', e.target.value)}
+                placeholder="Filter by email..."
+                className="filter-input"
+              />
+            </div>
+            
+            <div className="filter-group">
+              <label htmlFor="user-tier-filter">Subscription Tier:</label>
+              <select
+                id="user-tier-filter"
+                value={jobFilters.userTier}
+                onChange={(e) => handleJobFilterChange('userTier', e.target.value)}
+                className="filter-select"
+              >
+                <option value="">All Tiers</option>
+                <option value="anonymous">Anonymous</option>
+                {tiers.map(tier => (
+                  <option key={tier.id} value={tier.tier_key}>
+                    {tier.display_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
 
-      {logs.length === 0 ? (
-        <div className="no-logs">No activity logs found</div>
-      ) : (
-        <>
-          <div className="logs-list">
-            {logs.map(log => (
-              <div key={log.id} className="log-item">
-                <div className="log-header">
-                  <span className={`log-category log-category-${log.category}`}>
-                    {log.category}
-                  </span>
-                  <span className="log-type">{log.activity_type.replace(/_/g, ' ')}</span>
-                  <span className="log-date">{new Date(log.created_at).toLocaleString()}</span>
+          {loadingJobs && jobs.length === 0 ? (
+            <div className="loading">Loading PDF jobs...</div>
+          ) : jobsError && jobs.length === 0 ? (
+            <div className="error-message">Error: {jobsError}</div>
+          ) : jobs.length === 0 ? (
+            <div className="no-logs">No PDF jobs found</div>
+          ) : (
+            <>
+              {jobsPagination && (
+                <div className="logs-summary">
+                  Showing {jobs.length} of {jobsPagination.total_count} jobs
                 </div>
-                <div className="log-action">{log.action}</div>
-                {log.description && (
-                  <div className="log-description">{log.description}</div>
-                )}
-                {log.actor && (
-                  <div className="log-actor">
-                    <strong>Performed by:</strong> {log.actor.email}
-                    {log.actor.first_name && ` (${log.actor.first_name} ${log.actor.last_name || ''})`}
-                  </div>
-                )}
-                {log.reason && (
-                  <div className="log-reason">
-                    <strong>Reason:</strong> {log.reason}
-                  </div>
-                )}
-                {log.changes && (
-                  <div className="log-changes">
-                    <strong>Changes:</strong>
-                    <pre>{formatChanges(log.changes)}</pre>
-                  </div>
-                )}
-                {log.related_tier_id && (
-                  <div className="log-related">
-                    <strong>Related Tier ID:</strong> {log.related_tier_id}
-                  </div>
-                )}
-                <div className="log-metadata">
-                  {log.ip_address && <span>IP: {log.ip_address}</span>}
-                  {log.country && <span>Country: {log.country}</span>}
-                  {log.actor_type && <span>Actor Type: {log.actor_type}</span>}
+              )}
+              
+              <div className="jobs-list-compact">
+                {/* Header row */}
+                <div className="job-item-compact job-header-row">
+                  <div>User</div>
+                  <div>Status</div>
+                  <div>Template</div>
+                  <div>CSV</div>
+                  <div>PDFs</div>
+                  <div>Date</div>
+                  <div>Actions</div>
                 </div>
+                
+                {jobs.map(job => (
+                  <div key={job.id} className="job-item-compact">
+                    <div className="job-user-col">
+                      {job.user ? (
+                        <span title={job.user.email}>
+                          {job.user.email}
+                          {job.user.subscription_tier && (
+                            <span className="tier-badge-small">{job.user.subscription_tier}</span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="anonymous-user">Anonymous</span>
+                      )}
+                    </div>
+                    <span className={`job-status job-status-${job.status}`}>{job.status}</span>
+                    <div className="job-template-col">
+                      {job.template_file ? (
+                        <button
+                          onClick={() => handleFileDownload(
+                            APIService.getFileDownloadUrl(job.template_file.id),
+                            job.template_file.original_filename
+                          )}
+                          className="job-file-link btn-link"
+                          title={job.template_file.original_filename}
+                        >
+                          {job.template_filename}
+                        </button>
+                      ) : (
+                        <span title={job.template_filename}>{job.template_filename}</span>
+                      )}
+                    </div>
+                    <div className="job-csv-col">
+                      {job.csv_file ? (
+                        <button
+                          onClick={() => handleFileDownload(
+                            APIService.getFileDownloadUrl(job.csv_file.id),
+                            job.csv_file.original_filename
+                          )}
+                          className="job-file-link btn-link"
+                          title={job.csv_file.original_filename}
+                        >
+                          {job.csv_filename}
+                        </button>
+                      ) : (
+                        <span title={job.csv_filename}>{job.csv_filename}</span>
+                      )}
+                    </div>
+                    <div className="job-pdfs-col">
+                      {job.successful_count} / {job.pdf_count}
+                    </div>
+                    <span className="job-date-compact">{new Date(job.created_at).toLocaleString()}</span>
+                    <div className="job-actions-col">
+                      {job.zip_filename && (
+                        <button
+                          onClick={() => handleFileDownload(
+                            APIService.getJobZipDownloadUrl(job.id),
+                            job.zip_filename
+                          )}
+                          className="btn-link"
+                          title="Download ZIP"
+                        >
+                          ZIP
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
 
-          <div className="pagination">
-            <button
-              onClick={handlePreviousPage}
-              disabled={skip === 0}
-              className="btn-secondary"
-            >
-              Previous
-            </button>
-            <span className="pagination-info">
-              Page {Math.floor(skip / limit) + 1} of {Math.ceil(total / limit)}
-            </span>
-            <button
-              onClick={handleNextPage}
-              disabled={skip + limit >= total}
-              className="btn-secondary"
-            >
-              Next
-            </button>
-          </div>
-        </>
+              {jobsPagination && (
+                <div className="pagination">
+                  <button
+                    onClick={handlePreviousJobsPage}
+                    disabled={jobsPage === 1}
+                    className="btn-secondary"
+                  >
+                    Previous
+                  </button>
+                  <span className="pagination-info">
+                    Page {jobsPage} of {jobsPagination.total_pages}
+                  </span>
+                  <button
+                    onClick={handleNextJobsPage}
+                    disabled={jobsPage >= jobsPagination.total_pages}
+                    className="btn-secondary"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       )}
     </div>
   );
 }
 
 export default AdminActivityLogs;
-

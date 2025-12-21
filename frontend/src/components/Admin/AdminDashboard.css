@@ -57,6 +57,12 @@
   margin-bottom: 0.5rem;
 }
 
+.storage-breakdown {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
 .tier-breakdown {
   display: flex;
   flex-wrap: wrap;
@@ -87,6 +93,61 @@
 
 .error-message {
   color: var(--error-color);
+}
+
+/* Analytics Section */
+.analytics-section {
+  margin-top: 2rem;
+  margin-bottom: 2rem;
+}
+
+.analytics-section h2 {
+  color: var(--text-primary);
+  margin-bottom: 1rem;
+}
+
+.analytics-table-container {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.analytics-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.analytics-table th {
+  background: var(--bg-secondary);
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 2px solid var(--border-color);
+}
+
+.analytics-table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+.analytics-table tr:hover {
+  background: var(--bg-secondary);
+}
+
+.analytics-table .tier-badge {
+  background: var(--primary-color);
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.analytics-table .tier-badge.tier-anonymous {
+  background: #666;
 }
 
 @media (max-width: 768px) {

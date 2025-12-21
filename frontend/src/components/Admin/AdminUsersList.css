@@ -28,14 +28,14 @@ main.main-container.admin-main-container {
   background: var(--card-bg);
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  padding: 1.5rem;
+  padding: 1rem;
   margin-bottom: 2rem;
 }
 
 .search-form {
   display: flex;
   gap: 1rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
   align-items: center;
 }
 
@@ -57,6 +57,7 @@ main.main-container.admin-main-container {
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
+  margin-top: 0.5rem;
 }
 
 .tier-filters > span {
@@ -87,6 +88,81 @@ main.main-container.admin-main-container {
   border-color: var(--primary-color);
 }
 
+.numeric-filters-section {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.numeric-filters {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.numeric-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.numeric-filter-group label {
+  font-weight: 500;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.numeric-input {
+  width: 80px;
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: var(--card-bg);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.numeric-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+.numeric-filter-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.numeric-filter-actions .btn-secondary {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.numeric-filter-actions .btn-secondary:hover {
+  background-color: var(--bg-hover, rgba(0, 0, 0, 0.1));
+  border-color: var(--primary-color);
+}
+
+[data-theme="dark"] .numeric-filter-actions .btn-secondary:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.numeric-filter-actions .btn-primary {
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
 .users-table-container {
   background: var(--card-bg);
   border: 1px solid var(--border-color);
@@ -103,62 +179,107 @@ main.main-container.admin-main-container {
 
 .users-table th {
   background: var(--bg-secondary);
-  padding: 0.75rem 0.5rem;
+  padding: 0.5rem 0.4rem;
   text-align: left;
   font-weight: 600;
   color: var(--text-primary);
   border-bottom: 2px solid var(--border-color);
   white-space: nowrap;
+  font-size: 0.85rem;
+}
+
+.users-table th.sortable {
+  position: relative;
+}
+
+.users-table th.sortable:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="dark"] .users-table th.sortable:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.sort-indicator {
+  margin-left: 0.25rem;
+  font-weight: bold;
+  color: var(--primary-color);
 }
 
 /* Column width distribution */
 .users-table th:nth-child(1),
 .users-table td:nth-child(1) {
-  width: 20%; /* Email */
+  width: 18%; /* Email */
 }
 
 .users-table th:nth-child(2),
 .users-table td:nth-child(2) {
-  width: 12%; /* Name */
+  width: 10%; /* Name */
 }
 
 .users-table th:nth-child(3),
 .users-table td:nth-child(3) {
-  width: 8%; /* Tier */
+  width: 7%; /* Tier */
 }
 
 .users-table th:nth-child(4),
 .users-table td:nth-child(4) {
-  width: 12%; /* Status */
+  width: 9%; /* Status */
 }
 
 .users-table th:nth-child(5),
 .users-table td:nth-child(5) {
-  width: 8%; /* Credits */
+  width: 8%; /* Credits Used */
 }
 
 .users-table th:nth-child(6),
 .users-table td:nth-child(6) {
-  width: 10%; /* Custom Limits */
+  width: 8%; /* Credits Remaining */
 }
 
 .users-table th:nth-child(7),
 .users-table td:nth-child(7) {
-  width: 12%; /* Created */
+  width: 7%; /* PDF Runs */
 }
 
 .users-table th:nth-child(8),
 .users-table td:nth-child(8) {
-  width: 18%; /* Actions - ensure this is visible */
-  min-width: 120px;
+  width: 7%; /* Custom Limits */
+}
+
+.users-table th:nth-child(9),
+.users-table td:nth-child(9) {
+  width: 9%; /* Created */
+}
+
+.users-table th:nth-child(10),
+.users-table td:nth-child(10) {
+  width: 20%; /* Actions */
+  min-width: 110px;
 }
 
 .users-table td {
-  padding: 0.75rem 0.5rem;
+  padding: 0.5rem 0.4rem;
   border-bottom: 1px solid var(--border-color);
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
+  font-size: 0.9rem;
+}
+
+.users-table th.numeric-col,
+.users-table td.numeric-col {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Make numeric columns more compact */
+.users-table td:nth-child(5),
+.users-table td:nth-child(6),
+.users-table td:nth-child(7) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
 }
 
 .users-table td:first-child {
@@ -178,11 +299,12 @@ main.main-container.admin-main-container {
 }
 
 .tier-badge {
-  padding: 0.25rem 0.75rem;
-  border-radius: 4px;
-  font-size: 0.85rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 3px;
+  font-size: 0.75rem;
   font-weight: 500;
   text-transform: capitalize;
+  display: inline-block;
 }
 
 .tier-free,
@@ -208,10 +330,11 @@ main.main-container.admin-main-container {
 }
 
 .status-badge {
-  padding: 0.25rem 0.75rem;
-  border-radius: 4px;
-  font-size: 0.85rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 3px;
+  font-size: 0.75rem;
   font-weight: 500;
+  display: inline-block;
 }
 
 .status-badge.active {
@@ -225,22 +348,25 @@ main.main-container.admin-main-container {
 }
 
 .admin-badge {
-  margin-left: 0.5rem;
-  padding: 0.25rem 0.5rem;
+  margin-left: 0.4rem;
+  padding: 0.15rem 0.4rem;
   background: #ff9800;
   color: white;
-  border-radius: 4px;
-  font-size: 0.75rem;
+  border-radius: 3px;
+  font-size: 0.7rem;
   font-weight: 600;
+  display: inline-block;
 }
 
 .custom-limits-badge {
   color: #4caf50;
   font-weight: 500;
+  font-size: 0.85rem;
 }
 
 .no-custom-limits {
   color: var(--text-secondary);
+  font-size: 0.85rem;
 }
 
 .btn-link {
@@ -298,25 +424,29 @@ main.main-container.admin-main-container {
   }
 
   .users-table {
-    min-width: 900px;
+    min-width: 1100px;
   }
 
   .users-table th,
   .users-table td {
-    padding: 0.5rem;
-    font-size: 0.9rem;
+    padding: 0.4rem 0.3rem;
+    font-size: 0.85rem;
   }
 }
 
 @media (max-width: 768px) {
   .users-table {
-    min-width: 1000px;
+    min-width: 1200px;
   }
   
   .users-table th,
   .users-table td {
-    padding: 0.5rem 0.25rem;
-    font-size: 0.85rem;
+    padding: 0.4rem 0.25rem;
+    font-size: 0.8rem;
+  }
+  
+  .users-table th {
+    font-size: 0.8rem;
   }
 }
 

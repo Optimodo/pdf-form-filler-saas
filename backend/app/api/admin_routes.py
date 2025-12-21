@@ -130,6 +130,40 @@ async def get_dashboard_stats(
         )
         recent_jobs = recent_jobs_result.scalar() or 0
         
+        # Analytics by tier: Jobs count
+        jobs_by_tier_result = await session.execute(
+            select(User.subscription_tier, func.count(ProcessingJob.id))
+            .join(ProcessingJob, User.id == ProcessingJob.user_id)
+            .group_by(User.subscription_tier)
+        )
+        jobs_by_tier = {tier: count for tier, count in jobs_by_tier_result.all()}
+        
+        # Anonymous jobs count
+        anonymous_jobs_result = await session.execute(
+            select(func.count(ProcessingJob.id))
+            .where(ProcessingJob.user_id.is_(None))
+        )
+        anonymous_jobs = anonymous_jobs_result.scalar() or 0
+        if anonymous_jobs > 0:
+            jobs_by_tier['anonymous'] = anonymous_jobs
+        
+        # Analytics by tier: PDFs processed
+        pdfs_by_tier_result = await session.execute(
+            select(User.subscription_tier, func.sum(ProcessingJob.successful_count))
+            .join(ProcessingJob, User.id == ProcessingJob.user_id)
+            .group_by(User.subscription_tier)
+        )
+        pdfs_by_tier = {tier: (count or 0) for tier, count in pdfs_by_tier_result.all()}
+        
+        # Anonymous PDFs processed
+        anonymous_pdfs_result = await session.execute(
+            select(func.sum(ProcessingJob.successful_count))
+            .where(ProcessingJob.user_id.is_(None))
+        )
+        anonymous_pdfs = anonymous_pdfs_result.scalar() or 0
+        if anonymous_pdfs > 0:
+            pdfs_by_tier['anonymous'] = anonymous_pdfs
+        
         return {
             "users": {
                 "total": total_users,
@@ -139,10 +173,12 @@ async def get_dashboard_stats(
             "jobs": {
                 "total": total_jobs,
                 "successful": successful_jobs,
-                "recent_24h": recent_jobs
+                "recent_24h": recent_jobs,
+                "by_tier": jobs_by_tier
             },
             "processing": {
-                "total_pdfs": total_pdfs or 0
+                "total_pdfs": total_pdfs or 0,
+                "pdfs_by_tier": pdfs_by_tier
             },
             "storage": {
                 "input_bytes": input_storage_bytes,
@@ -165,6 +201,14 @@ async def list_users(
     limit: int = Query(50, ge=1, le=100),
     search: Optional[str] = Query(None),
     tier: Optional[str] = Query(None),
+    min_credits_used: Optional[int] = Query(None, description="Minimum lifetime credits used"),
+    max_credits_used: Optional[int] = Query(None, description="Maximum lifetime credits used"),
+    min_credits_remaining: Optional[int] = Query(None, description="Minimum remaining credits"),
+    max_credits_remaining: Optional[int] = Query(None, description="Maximum remaining credits"),
+    min_job_count: Optional[int] = Query(None, description="Minimum total PDF runs"),
+    max_job_count: Optional[int] = Query(None, description="Maximum total PDF runs"),
+    sort_by: Optional[str] = Query(None, description="Field to sort by (credits_used_total, credits_remaining, total_pdf_runs, created_at)"),
+    sort_order: Optional[str] = Query("desc", description="Sort order (asc or desc)"),
     admin_user: User = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session)
 ):
@@ -176,11 +220,17 @@ async def list_users(
         limit: Maximum number of records to return
         search: Search term for email/name
         tier: Filter by subscription tier
+        min_credits_used: Minimum lifetime credits used
+        max_credits_used: Maximum lifetime credits used
+        min_credits_remaining: Minimum remaining credits
+        max_credits_remaining: Maximum remaining credits
+        min_job_count: Minimum total PDF runs
+        max_job_count: Maximum total PDF runs
     """
     try:
         query = select(User)
         
-        # Apply filters
+        # Apply text search filter
         if search:
             search_term = f"%{search}%"
             query = query.where(
@@ -189,16 +239,55 @@ async def list_users(
                 (User.last_name.ilike(search_term))
             )
         
+        # Apply tier filter
         if tier:
             query = query.where(User.subscription_tier == tier)
+        
+        # Apply numeric filters
+        if min_credits_used is not None:
+            query = query.where(User.credits_used_total >= min_credits_used)
+        if max_credits_used is not None:
+            query = query.where(User.credits_used_total <= max_credits_used)
+        if min_credits_remaining is not None:
+            query = query.where(User.credits_remaining >= min_credits_remaining)
+        if max_credits_remaining is not None:
+            query = query.where(User.credits_remaining <= max_credits_remaining)
+        if min_job_count is not None:
+            query = query.where(User.total_pdf_runs >= min_job_count)
+        if max_job_count is not None:
+            query = query.where(User.total_pdf_runs <= max_job_count)
         
         # Get total count
         count_query = select(func.count()).select_from(query.subquery())
         total_result = await session.execute(count_query)
         total = total_result.scalar() or 0
         
-        # Apply pagination and ordering
-        query = query.order_by(desc(User.created_at)).offset(skip).limit(limit)
+        # Apply sorting
+        if sort_by:
+            sort_field = None
+            if sort_by == "credits_used_total":
+                sort_field = User.credits_used_total
+            elif sort_by == "credits_remaining":
+                sort_field = User.credits_remaining
+            elif sort_by == "total_pdf_runs":
+                sort_field = User.total_pdf_runs
+            elif sort_by == "created_at":
+                sort_field = User.created_at
+            
+            if sort_field:
+                if sort_order and sort_order.lower() == "asc":
+                    query = query.order_by(sort_field)
+                else:
+                    query = query.order_by(desc(sort_field))
+            else:
+                # Default to created_at if invalid sort_by
+                query = query.order_by(desc(User.created_at))
+        else:
+            # Default ordering by created_at
+            query = query.order_by(desc(User.created_at))
+        
+        # Apply pagination
+        query = query.offset(skip).limit(limit)
         
         result = await session.execute(query)
         users = result.scalars().all()
@@ -216,6 +305,8 @@ async def list_users(
                 "is_superuser": user.is_superuser,
                 "is_premium": user.is_premium,
                 "credits_remaining": user.credits_remaining,
+                "credits_used_total": user.credits_used_total,
+                "total_pdf_runs": user.total_pdf_runs,
                 "custom_limits_enabled": user.custom_limits_enabled,
                 "created_at": user.created_at.isoformat(),
                 "last_login": user.last_login.isoformat() if user.last_login else None
@@ -1427,5 +1518,166 @@ async def get_system_activity_logs(
     except Exception as e:
         logger.error(f"Error getting system activity logs: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get system activity logs: {str(e)}")
+
+
+@router.get("/jobs")
+async def list_all_jobs(
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=100),
+    user_email: Optional[str] = Query(None, description="Filter by user email"),
+    user_tier: Optional[str] = Query(None, description="Filter by user subscription tier"),
+    admin_user: User = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """
+    Get paginated processing jobs for all users with filtering options.
+    
+    Args:
+        page: Page number (1-indexed)
+        limit: Number of jobs per page (max 100)
+        user_email: Filter by user email (partial match)
+        user_tier: Filter by user subscription tier
+    """
+    try:
+        # Calculate offset
+        offset = (page - 1) * limit
+        
+        # Build where clauses for filtering
+        where_clauses = []
+        
+        # Apply filters
+        if user_email:
+            email_lower = user_email.lower().strip()
+            if email_lower == "anonymous" or email_lower == "anon":
+                # Filter for anonymous jobs (user_id IS NULL)
+                where_clauses.append(ProcessingJob.user_id.is_(None))
+            else:
+                # Filter by user email (for registered users)
+                search_term = f"%{user_email}%"
+                user_email_subquery = select(User.id).where(
+                    and_(
+                        User.id == ProcessingJob.user_id,
+                        User.email.ilike(search_term)
+                    )
+                ).exists()
+                where_clauses.append(user_email_subquery)
+        
+        if user_tier:
+            tier_lower = user_tier.lower().strip()
+            if tier_lower == "anonymous" or tier_lower == "anon":
+                # Filter for anonymous jobs (user_id IS NULL)
+                where_clauses.append(ProcessingJob.user_id.is_(None))
+            else:
+                # Filter by subscription tier (for registered users)
+                user_tier_subquery = select(User.id).where(
+                    and_(
+                        User.id == ProcessingJob.user_id,
+                        User.subscription_tier == user_tier
+                    )
+                ).exists()
+                where_clauses.append(user_tier_subquery)
+        
+        # Build base query for count
+        count_query = select(func.count(ProcessingJob.id))
+        if where_clauses:
+            if len(where_clauses) == 1:
+                count_query = count_query.where(where_clauses[0])
+            else:
+                count_query = count_query.where(and_(*where_clauses))
+        
+        total_count_result = await session.execute(count_query)
+        total_count = total_count_result.scalar() or 0
+        
+        # Build main query with relationships
+        query = select(ProcessingJob).options(
+            selectinload(ProcessingJob.template_file),
+            selectinload(ProcessingJob.csv_file),
+            selectinload(ProcessingJob.user)
+        )
+        
+        # Apply filters to main query
+        if where_clauses:
+            if len(where_clauses) == 1:
+                query = query.where(where_clauses[0])
+            else:
+                query = query.where(and_(*where_clauses))
+        
+        # Apply ordering and pagination
+        query = query.order_by(desc(ProcessingJob.created_at)).limit(limit).offset(offset)
+        
+        jobs_result = await session.execute(query)
+        jobs = jobs_result.scalars().all()
+        
+        # Build response with file information and user info
+        jobs_list = []
+        for job in jobs:
+            job_data = {
+                "id": str(job.id),
+                "template_filename": job.template_filename,
+                "csv_filename": job.csv_filename,
+                "pdf_count": job.pdf_count,
+                "successful_count": job.successful_count,
+                "failed_count": job.failed_count,
+                "status": job.status,
+                "total_credits_consumed": job.total_credits_consumed,
+                "subscription_credits_used": job.subscription_credits_used,
+                "rollover_credits_used": job.rollover_credits_used,
+                "topup_credits_used": job.topup_credits_used,
+                "processing_time_seconds": float(job.processing_time_seconds) if job.processing_time_seconds else None,
+                "file_size_mb": float(job.file_size_mb) if job.file_size_mb else None,
+                "zip_filename": job.zip_filename,
+                "session_id": job.session_id,
+                "created_at": job.created_at.isoformat(),
+                "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+                "error_message": job.error_message,
+                "template_file": None,
+                "csv_file": None,
+                "zip_file_path": job.zip_file_path,
+                "user": None
+            }
+            
+            # Add user info if available
+            if job.user:
+                job_data["user"] = {
+                    "id": str(job.user.id),
+                    "email": job.user.email,
+                    "first_name": job.user.first_name,
+                    "last_name": job.user.last_name,
+                    "subscription_tier": job.user.subscription_tier
+                }
+            
+            # Add template file info if available
+            if job.template_file:
+                job_data["template_file"] = {
+                    "id": str(job.template_file.id),
+                    "stored_filename": job.template_file.stored_filename,
+                    "original_filename": job.template_file.original_filename,
+                    "file_path": job.template_file.file_path
+                }
+            
+            # Add CSV file info if available
+            if job.csv_file:
+                job_data["csv_file"] = {
+                    "id": str(job.csv_file.id),
+                    "stored_filename": job.csv_file.stored_filename,
+                    "original_filename": job.csv_file.original_filename,
+                    "file_path": job.csv_file.file_path
+                }
+            
+            jobs_list.append(job_data)
+        
+        return {
+            "jobs": jobs_list,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_count": total_count,
+                "total_pages": (total_count + limit - 1) // limit if total_count > 0 else 0
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting all jobs: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get jobs: {str(e)}")
 
 
