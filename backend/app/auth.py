@@ -15,9 +15,10 @@ from fastapi_users.authentication import (
 from fastapi_users.db import SQLAlchemyUserDatabase
 from fastapi_users_db_sqlalchemy.access_token import SQLAlchemyAccessTokenDatabase
 from httpx_oauth.clients.google import GoogleOAuth2
+from sqlalchemy import select
 
 from .database import get_async_session
-from .models import User, OAuthAccount
+from .models import User, OAuthAccount, SubscriptionTier
 
 # OAuth configuration
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
@@ -38,12 +39,59 @@ google_oauth_client = GoogleOAuth2(
 # Apple OAuth client will be added later
 
 
+async def get_default_subscription_tier(session) -> str:
+    """
+    Get the default subscription tier from the database.
+    Returns the tier_key of the active tier with the lowest display_order,
+    or 'standard' as a fallback.
+    """
+    try:
+        result = await session.execute(
+            select(SubscriptionTier)
+            .where(SubscriptionTier.is_active == True)
+            .order_by(SubscriptionTier.display_order.asc())
+            .limit(1)
+        )
+        tier = result.scalar_one_or_none()
+        if tier:
+            return tier.tier_key
+    except Exception as e:
+        print(f"Warning: Could not fetch default tier from database: {e}")
+    # Fallback to 'standard' if database lookup fails
+    return "standard"
+
+
 class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
     """
     User manager for handling user operations.
     """
     reset_password_token_secret = SECRET_KEY
     verification_token_secret = SECRET_KEY
+
+    async def create(self, user_create, safe: bool = False, request: Optional[Request] = None):
+        """
+        Override create to set default subscription tier from database.
+        """
+        # Get default tier from database - SQLAlchemyUserDatabase exposes session as .session
+        default_tier = "standard"  # Fallback
+        try:
+            if hasattr(self.user_db, 'session') and self.user_db.session:
+                default_tier = await get_default_subscription_tier(self.user_db.session)
+        except Exception as e:
+            print(f"Warning: Could not get default tier during user creation: {e}")
+        
+        # Create the user
+        user = await super().create(user_create, safe=safe, request=request)
+        
+        # Set default tier if not already set (the model default might already be "standard")
+        if not user.subscription_tier or user.subscription_tier == "standard":
+            user.subscription_tier = default_tier
+        
+        # Save the change if tier was updated
+        if user.subscription_tier == default_tier:
+            await self.user_db.update(user)
+        
+        return user
 
     async def on_after_register(self, user: User, request: Optional[Request] = None):
         """Actions to perform after user registration."""

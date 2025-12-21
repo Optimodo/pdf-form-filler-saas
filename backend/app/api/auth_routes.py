@@ -7,12 +7,13 @@ from fastapi_users import fastapi_users
 from httpx_oauth.clients.google import GoogleOAuth2
 from pydantic import BaseModel
 
-from ..auth import auth_backend, fastapi_users, google_oauth_client, current_active_user, SECRET_KEY, get_user_manager, UserManager
+from ..auth import auth_backend, fastapi_users, google_oauth_client, current_active_user, SECRET_KEY, get_user_manager, UserManager, get_default_subscription_tier
 from ..schemas import UserRead, UserCreate, UserUpdate
 from ..models import User, OAuthAccount
 from ..database import get_async_session
 from fastapi_users.db import SQLAlchemyUserDatabase
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 
 
@@ -155,6 +156,9 @@ async def google_oauth_callback(request: Request, session: AsyncSession = Depend
         
         if not user:
             print("Creating new user...")
+            # Get default tier from database
+            default_tier = await get_default_subscription_tier(session)
+            
             # Create new user with Google profile data
             user = User(
                 id=uuid.uuid4(),
@@ -165,8 +169,8 @@ async def google_oauth_callback(request: Request, session: AsyncSession = Depend
                 is_verified=True,  # OAuth users are pre-verified
                 first_name=first_name,  # From Google profile
                 last_name=last_name,   # From Google profile
-                subscription_tier="free",
-                credits_remaining=10,
+                subscription_tier=default_tier,  # Use default tier from database
+                credits_remaining=0,  # All new users start with 0 top-up credits
                 created_at=datetime.now(),
                 updated_at=datetime.now()
             )

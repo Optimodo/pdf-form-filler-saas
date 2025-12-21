@@ -13,8 +13,8 @@ class UserRead(schemas.BaseUser[uuid.UUID]):
     """User read schema - what we return to the client."""
     first_name: Optional[str] = None
     last_name: Optional[str] = None
-    subscription_tier: str = "free"
-    credits_remaining: int = 10
+    subscription_tier: str = "standard"
+    credits_remaining: int = 0
     credits_used_this_month: int = 0
     is_premium: bool = False
     is_superuser: bool = False  # Explicitly include superuser status
@@ -81,7 +81,10 @@ class ProcessingJobRead(BaseModel):
     failed_count: int
     processing_time_seconds: Optional[float] = None
     status: str
-    credits_consumed: int
+    total_credits_consumed: int
+    subscription_credits_used: int
+    rollover_credits_used: int
+    topup_credits_used: int
     created_at: datetime
     completed_at: Optional[datetime] = None
     zip_filename: Optional[str] = None

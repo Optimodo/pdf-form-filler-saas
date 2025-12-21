@@ -13,6 +13,7 @@ import AdminDashboard from './components/Admin/AdminDashboard';
 import AdminUsersList from './components/Admin/AdminUsersList';
 import AdminUserDetails from './components/Admin/AdminUserDetails';
 import AdminTiers from './components/Admin/AdminTiers';
+import AdminActivityLogs from './components/Admin/AdminActivityLogs';
 import APIService from './services/api';
 import './styles/themes.css';
 import './styles/components.css';
@@ -393,6 +394,23 @@ function App() {
             <Header />
             <main className="main-container admin-main-container">
               <AdminTiers />
+            </main>
+          </div>
+        </AuthProvider>
+      </ToastProvider>
+    );
+  }
+
+  // Handle Admin Activity Logs route
+  if (currentPath === '/admin/activity-logs') {
+    console.log('✓ Rendering AdminActivityLogs for path:', currentPath);
+    return (
+      <ToastProvider>
+        <AuthProvider>
+          <div className="app">
+            <Header />
+            <main className="main-container admin-main-container">
+              <AdminActivityLogs />
             </main>
           </div>
         </AuthProvider>

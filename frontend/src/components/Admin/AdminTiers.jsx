@@ -246,16 +246,12 @@ function TierCard({ tier, onEdit, onDelete, disabled }) {
           <div>{tier.max_csv_size}</div>
         </div>
         <div className="limit-item">
-          <label>Daily Jobs</label>
-          <div>{tier.max_daily_jobs}</div>
+          <label>Max PDFs per Run</label>
+          <div>{tier.max_pdfs_per_run}</div>
         </div>
         <div className="limit-item">
-          <label>Monthly Jobs</label>
-          <div>{tier.max_monthly_jobs}</div>
-        </div>
-        <div className="limit-item">
-          <label>Files per Job</label>
-          <div>{tier.max_files_per_job}</div>
+          <label>Monthly PDF Credits</label>
+          <div>{tier.monthly_pdf_credits}</div>
         </div>
         <div className="limit-item">
           <label>Can Save Templates</label>
@@ -287,9 +283,8 @@ function TierForm({ tier, onSave, onCancel, loading }) {
     description: tier?.description || '',
     max_pdf_size: tier ? parseFloat(bytesToMb(tier.max_pdf_size)) : 1,
     max_csv_size: tier ? parseFloat(bytesToMb(tier.max_csv_size)) : 0.25,
-    max_daily_jobs: tier?.max_daily_jobs || 10,
-    max_monthly_jobs: tier?.max_monthly_jobs || 100,
-    max_files_per_job: tier?.max_files_per_job || 100,
+    max_pdfs_per_run: tier?.max_pdfs_per_run || 100,
+    monthly_pdf_credits: tier?.monthly_pdf_credits || 0,
     can_save_templates: tier?.can_save_templates || false,
     can_use_api: tier?.can_use_api || false,
     priority_processing: tier?.priority_processing || false,
@@ -372,31 +367,21 @@ function TierForm({ tier, onSave, onCancel, loading }) {
           </div>
 
           <div className="form-group">
-            <label>Daily Jobs</label>
+            <label>Max PDFs per Run</label>
             <input
               type="number"
-              value={formData.max_daily_jobs}
-              onChange={(e) => handleChange('max_daily_jobs', parseInt(e.target.value) || 0)}
+              value={formData.max_pdfs_per_run}
+              onChange={(e) => handleChange('max_pdfs_per_run', parseInt(e.target.value) || 0)}
               min="0"
             />
           </div>
 
           <div className="form-group">
-            <label>Monthly Jobs</label>
+            <label>Monthly PDF Credits</label>
             <input
               type="number"
-              value={formData.max_monthly_jobs}
-              onChange={(e) => handleChange('max_monthly_jobs', parseInt(e.target.value) || 0)}
-              min="0"
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Files per Job</label>
-            <input
-              type="number"
-              value={formData.max_files_per_job}
-              onChange={(e) => handleChange('max_files_per_job', parseInt(e.target.value) || 0)}
+              value={formData.monthly_pdf_credits}
+              onChange={(e) => handleChange('monthly_pdf_credits', parseInt(e.target.value) || 0)}
               min="0"
             />
           </div>
@@ -490,3 +475,4 @@ function TierForm({ tier, onSave, onCancel, loading }) {
 }
 
 export default AdminTiers;
+

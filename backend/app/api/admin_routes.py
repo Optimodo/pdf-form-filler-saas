@@ -13,9 +13,11 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, or_, and_, cast, Float
 from sqlalchemy.orm import selectinload
+import os
 
 from fastapi import Request
 
@@ -100,11 +102,24 @@ async def get_dashboard_stats(
         )
         total_pdfs = total_pdfs_result.scalar() or 0
         
-        # Total storage used (approximate)
-        storage_result = await session.execute(
+        # Input file storage (templates and CSV files)
+        input_storage_result = await session.execute(
             select(func.sum(UploadedFile.file_size_bytes))
         )
-        total_storage_bytes = storage_result.scalar() or 0
+        input_storage_bytes = input_storage_result.scalar() or 0
+        
+        # Output file storage (PDF ZIP files)
+        # Sum up file_size_mb from ProcessingJob and convert to bytes
+        # Note: file_size_mb is stored as string, so we need to cast it
+        output_storage_result = await session.execute(
+            select(func.sum(cast(ProcessingJob.file_size_mb, Float)))
+            .where(ProcessingJob.file_size_mb.isnot(None))
+        )
+        output_storage_mb = output_storage_result.scalar() or 0
+        output_storage_bytes = int(output_storage_mb * 1024 * 1024) if output_storage_mb else 0
+        
+        # Total storage
+        total_storage_bytes = input_storage_bytes + output_storage_bytes
         
         # Recent activity (last 24 hours)
         from datetime import datetime, timedelta
@@ -130,8 +145,12 @@ async def get_dashboard_stats(
                 "total_pdfs": total_pdfs or 0
             },
             "storage": {
-                "total_bytes": total_storage_bytes or 0,
-                "total_display": format_file_size(total_storage_bytes or 0)
+                "input_bytes": input_storage_bytes,
+                "input_display": format_file_size(input_storage_bytes),
+                "output_bytes": output_storage_bytes,
+                "output_display": format_file_size(output_storage_bytes),
+                "total_bytes": total_storage_bytes,
+                "total_display": format_file_size(total_storage_bytes)
             }
         }
         
@@ -269,7 +288,10 @@ async def get_user_details(
                 "is_superuser": user.is_superuser,
                 "is_premium": user.is_premium,
                 "credits_remaining": user.credits_remaining,
+                "credits_rollover": user.credits_rollover,
                 "credits_used_this_month": user.credits_used_this_month,
+                "credits_used_total": user.credits_used_total,
+                "total_pdf_runs": user.total_pdf_runs,
                 "subscription_start_date": user.subscription_start_date.isoformat() if user.subscription_start_date else None,
                 "subscription_end_date": user.subscription_end_date.isoformat() if user.subscription_end_date else None,
                 "created_at": user.created_at.isoformat(),
@@ -277,7 +299,7 @@ async def get_user_details(
             },
             "limits": limits_summary,
             "statistics": {
-                "total_jobs": jobs_count,
+                "total_pdf_runs": user.total_pdf_runs,
                 "total_files": files_count,
                 "total_templates": templates_count
             },
@@ -300,6 +322,189 @@ async def get_user_details(
     except Exception as e:
         logger.error(f"Error getting user details: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get user details: {str(e)}")
+
+
+@router.get("/users/{user_id}/jobs")
+async def get_user_jobs(
+    user_id: UUID,
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=100),
+    admin_user: User = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """
+    Get paginated processing jobs for a user with file information.
+    
+    Args:
+        user_id: User ID
+        page: Page number (1-indexed)
+        limit: Number of jobs per page (max 100)
+    """
+    try:
+        # Calculate offset
+        offset = (page - 1) * limit
+        
+        # Get total count
+        total_count_result = await session.execute(
+            select(func.count(ProcessingJob.id))
+            .where(ProcessingJob.user_id == user_id)
+        )
+        total_count = total_count_result.scalar() or 0
+        
+        # Get paginated jobs with file relationships
+        jobs_result = await session.execute(
+            select(ProcessingJob)
+            .where(ProcessingJob.user_id == user_id)
+            .options(
+                selectinload(ProcessingJob.template_file),
+                selectinload(ProcessingJob.csv_file)
+            )
+            .order_by(desc(ProcessingJob.created_at))
+            .limit(limit)
+            .offset(offset)
+        )
+        jobs = jobs_result.scalars().all()
+        
+        # Build response with file information
+        jobs_list = []
+        for job in jobs:
+            job_data = {
+                "id": str(job.id),
+                "template_filename": job.template_filename,
+                "csv_filename": job.csv_filename,
+                "pdf_count": job.pdf_count,
+                "successful_count": job.successful_count,
+                "failed_count": job.failed_count,
+                "status": job.status,
+                "total_credits_consumed": job.total_credits_consumed,
+                "subscription_credits_used": job.subscription_credits_used,
+                "rollover_credits_used": job.rollover_credits_used,
+                "topup_credits_used": job.topup_credits_used,
+                "processing_time_seconds": float(job.processing_time_seconds) if job.processing_time_seconds else None,
+                "file_size_mb": float(job.file_size_mb) if job.file_size_mb else None,
+                "zip_filename": job.zip_filename,
+                "session_id": job.session_id,
+                "created_at": job.created_at.isoformat(),
+                "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+                "error_message": job.error_message,
+                # File download information
+                "template_file": None,
+                "csv_file": None,
+                "zip_file_path": job.zip_file_path
+            }
+            
+            # Add template file info if available
+            if job.template_file:
+                job_data["template_file"] = {
+                    "id": str(job.template_file.id),
+                    "stored_filename": job.template_file.stored_filename,
+                    "original_filename": job.template_file.original_filename,
+                    "file_path": job.template_file.file_path
+                }
+            
+            # Add CSV file info if available
+            if job.csv_file:
+                job_data["csv_file"] = {
+                    "id": str(job.csv_file.id),
+                    "stored_filename": job.csv_file.stored_filename,
+                    "original_filename": job.csv_file.original_filename,
+                    "file_path": job.csv_file.file_path
+                }
+            
+            jobs_list.append(job_data)
+        
+        return {
+            "jobs": jobs_list,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_count": total_count,
+                "total_pages": (total_count + limit - 1) // limit if total_count > 0 else 0
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting user jobs: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get user jobs: {str(e)}")
+
+
+@router.get("/files/{file_id}/download")
+async def download_user_file(
+    file_id: UUID,
+    admin_user: User = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """
+    Download an uploaded file (PDF template or CSV) by file ID.
+    
+    This endpoint allows admins to download files for debugging.
+    """
+    try:
+        result = await session.execute(
+            select(UploadedFile).where(UploadedFile.id == file_id)
+        )
+        file = result.scalar_one_or_none()
+        
+        if not file:
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        # Check if file exists on disk
+        if not os.path.exists(file.file_path):
+            raise HTTPException(status_code=404, detail="File not found on disk")
+        
+        # Return the file
+        return FileResponse(
+            path=file.file_path,
+            filename=file.original_filename,
+            media_type='application/octet-stream'
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error downloading file: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to download file: {str(e)}")
+
+
+@router.get("/jobs/{job_id}/download-zip")
+async def download_job_zip(
+    job_id: UUID,
+    admin_user: User = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """
+    Download the ZIP output file for a specific job.
+    
+    This endpoint allows admins to download job output files for debugging.
+    """
+    try:
+        result = await session.execute(
+            select(ProcessingJob).where(ProcessingJob.id == job_id)
+        )
+        job = result.scalar_one_or_none()
+        
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        
+        if not job.zip_file_path or not job.zip_filename:
+            raise HTTPException(status_code=404, detail="ZIP file not available for this job")
+        
+        # Check if file exists on disk
+        if not os.path.exists(job.zip_file_path):
+            raise HTTPException(status_code=404, detail="ZIP file not found on disk")
+        
+        # Return the ZIP file
+        return FileResponse(
+            path=job.zip_file_path,
+            filename=job.zip_filename,
+            media_type='application/zip'
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error downloading job ZIP: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to download job ZIP: {str(e)}")
 
 
 # SECURITY NOTE: Admin write operations (PATCH, POST, DELETE) are exposed via API
@@ -363,9 +568,7 @@ async def update_user_subscription(
         user.custom_limits_enabled = False
         user.custom_max_pdf_size = None
         user.custom_max_csv_size = None
-        user.custom_max_daily_jobs = None
-        user.custom_max_monthly_jobs = None
-        user.custom_max_files_per_job = None
+        user.custom_max_pdfs_per_run = None
         user.custom_can_save_templates = None
         user.custom_can_use_api = None
         user.custom_limits_reason = None
@@ -552,6 +755,90 @@ async def apply_limit_template(
         raise HTTPException(status_code=500, detail=f"Failed to apply template: {str(e)}")
 
 
+@router.patch("/users/{user_id}/credits")
+async def update_user_credits(
+    user_id: UUID,
+    credits_data: dict,
+    request: Request = None,
+    admin_user: User = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """
+    Update a user's credit balances (for testing/debugging).
+    
+    SECURITY: This endpoint is intended for UI use only. Consider adding
+    IP whitelisting or origin checking in production.
+    """
+    try:
+        result = await session.execute(
+            select(User).where(User.id == user_id)
+        )
+        user = result.scalar_one_or_none()
+        
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Track changes for logging
+        changes = {}
+        old_values = {}
+        
+        # Update credit fields if provided
+        credit_fields = [
+            'credits_remaining',
+            'credits_rollover',
+            'credits_used_this_month',
+            'credits_used_total',
+            'total_pdf_runs'
+        ]
+        
+        for field in credit_fields:
+            if field in credits_data:
+                old_value = getattr(user, field)
+                new_value = int(credits_data[field])
+                if old_value != new_value:
+                    old_values[field] = old_value
+                    changes[field] = {"old": old_value, "new": new_value}
+                    setattr(user, field, new_value)
+        
+        await session.commit()
+        await session.refresh(user)
+        
+        logger.warning(f"SECURITY: Admin {admin_user.email} (ID: {admin_user.id}) updated credits for user {user.email} (ID: {user_id})")
+        
+        # Log the activity
+        await activity_logger.log_admin_action(
+            session=session,
+            admin_id=admin_user.id,
+            action="Updated user credits",
+            target_user_id=user_id,
+            activity_type="admin_user_credits_updated",
+            description=f"Admin updated credit balances for user",
+            changes=changes,
+            request=request
+        )
+        
+        return {
+            "success": True,
+            "message": "Credits updated successfully",
+            "user": {
+                "id": str(user.id),
+                "email": user.email,
+                "credits_remaining": user.credits_remaining,
+                "credits_rollover": user.credits_rollover,
+                "credits_used_this_month": user.credits_used_this_month,
+                "credits_used_total": user.credits_used_total,
+                "total_pdf_runs": user.total_pdf_runs
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await session.rollback()
+        logger.error(f"Error updating user credits: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update credits: {str(e)}")
+
+
 @router.patch("/users/{user_id}/activate")
 async def toggle_user_active(
     user_id: UUID,
@@ -663,14 +950,13 @@ async def list_subscription_tiers(
                     "description": tier.description,
                     "max_pdf_size": format_file_size(tier.max_pdf_size),
                     "max_csv_size": format_file_size(tier.max_csv_size),
-                    "max_daily_jobs": tier.max_daily_jobs,
-                    "max_monthly_jobs": tier.max_monthly_jobs,
-                    "max_files_per_job": tier.max_files_per_job,
+                    "max_pdfs_per_run": tier.max_pdfs_per_run,
                     "can_save_templates": tier.can_save_templates,
                     "can_use_api": tier.can_use_api,
                     "priority_processing": tier.priority_processing,
                     "max_saved_templates": tier.max_saved_templates,
                     "max_total_storage_mb": tier.max_total_storage_mb,
+                    "monthly_pdf_credits": tier.monthly_pdf_credits,
                     "display_order": tier.display_order,
                     "is_active": tier.is_active,
                     "created_at": tier.created_at.isoformat(),
@@ -707,14 +993,13 @@ async def get_subscription_tier(
             "description": tier.description,
             "max_pdf_size": tier.max_pdf_size,  # Return in bytes for editing
             "max_csv_size": tier.max_csv_size,
-            "max_daily_jobs": tier.max_daily_jobs,
-            "max_monthly_jobs": tier.max_monthly_jobs,
-            "max_files_per_job": tier.max_files_per_job,
+            "max_pdfs_per_run": tier.max_pdfs_per_run,
             "can_save_templates": tier.can_save_templates,
             "can_use_api": tier.can_use_api,
             "priority_processing": tier.priority_processing,
             "max_saved_templates": tier.max_saved_templates,
             "max_total_storage_mb": tier.max_total_storage_mb,
+            "monthly_pdf_credits": tier.monthly_pdf_credits,
             "display_order": tier.display_order,
             "is_active": tier.is_active,
         }
@@ -758,14 +1043,13 @@ async def create_subscription_tier(
             description=tier_data.get("description"),
             max_pdf_size=tier_data["max_pdf_size"],
             max_csv_size=tier_data["max_csv_size"],
-            max_daily_jobs=tier_data.get("max_daily_jobs", 10),
-            max_monthly_jobs=tier_data.get("max_monthly_jobs", 100),
-            max_files_per_job=tier_data.get("max_files_per_job", 100),
+            max_pdfs_per_run=tier_data.get("max_pdfs_per_run", 100),
             can_save_templates=tier_data.get("can_save_templates", False),
             can_use_api=tier_data.get("can_use_api", False),
             priority_processing=tier_data.get("priority_processing", False),
             max_saved_templates=tier_data.get("max_saved_templates", 0),
             max_total_storage_mb=tier_data.get("max_total_storage_mb", 0),
+            monthly_pdf_credits=tier_data.get("monthly_pdf_credits", 0),
             display_order=tier_data.get("display_order", 999),
             is_active=tier_data.get("is_active", True),
         )
@@ -828,17 +1112,26 @@ async def update_subscription_tier(
         if not tier:
             raise HTTPException(status_code=404, detail="Tier not found")
         
-        # Update fields if provided
+        # Capture original values for logging
+        original_values = {}
         updatable_fields = [
             "display_name", "description", "max_pdf_size", "max_csv_size",
-            "max_daily_jobs", "max_monthly_jobs", "max_files_per_job",
+            "max_pdfs_per_run",
             "can_save_templates", "can_use_api", "priority_processing",
-            "max_saved_templates", "max_total_storage_mb", "display_order", "is_active"
+            "max_saved_templates", "max_total_storage_mb", "monthly_pdf_credits",
+            "display_order", "is_active"
         ]
         
+        # Track changes for logging
+        changes = {}
         for field in updatable_fields:
             if field in tier_data:
-                setattr(tier, field, tier_data[field])
+                original_value = getattr(tier, field)
+                new_value = tier_data[field]
+                if original_value != new_value:
+                    original_values[field] = original_value
+                    changes[field] = {"old": original_value, "new": new_value}
+                setattr(tier, field, new_value)
         
         await session.commit()
         await session.refresh(tier)
@@ -847,6 +1140,17 @@ async def update_subscription_tier(
         await refresh_tier_cache(session)
         
         logger.warning(f"SECURITY: Admin {admin_user.email} (ID: {admin_user.id}) updated tier {tier.tier_key}")
+        
+        # Log the activity if there were any changes
+        if changes:
+            await activity_logger.log_tier_updated(
+                session=session,
+                admin_id=admin_user.id,
+                tier_id=tier.id,
+                action=f"Updated tier '{tier.display_name}'",
+                changes=changes,
+                request=request
+            )
         
         return {
             "success": True,
@@ -900,6 +1204,18 @@ async def delete_subscription_tier(
             )
         
         tier_key = tier.tier_key
+        tier_display_name = tier.display_name
+        
+        # Log the activity BEFORE deleting
+        await activity_logger.log_tier_updated(
+            session=session,
+            admin_id=admin_user.id,
+            tier_id=tier_id,
+            action=f"Deleted tier '{tier_display_name}'",
+            changes={"deleted": {"tier_key": tier_key, "display_name": tier_display_name}},
+            request=request
+        )
+        
         await session.delete(tier)
         await session.commit()
         
@@ -910,7 +1226,7 @@ async def delete_subscription_tier(
         
         return {
             "success": True,
-            "message": f"Tier '{tier.display_name}' deleted successfully"
+            "message": f"Tier '{tier_display_name}' deleted successfully"
         }
     except HTTPException:
         raise
@@ -997,4 +1313,119 @@ async def get_user_activity_logs(
     except Exception as e:
         logger.error(f"Error getting activity logs: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get activity logs: {str(e)}")
+
+
+@router.get("/activity-logs")
+async def get_system_activity_logs(
+    category: Optional[str] = Query(None, description="Filter by category (e.g., 'admin', 'system')"),
+    activity_type: Optional[str] = Query(None, description="Filter by activity type (e.g., 'tier_updated')"),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum number of logs to return"),
+    skip: int = Query(0, ge=0, description="Number of logs to skip"),
+    admin_user: User = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """
+    Get system-wide activity logs for non-user-specific changes.
+    
+    Returns activities such as:
+    - Subscription tier changes (created, updated, deleted)
+    - System configuration changes
+    - Other admin actions not tied to specific users
+    
+    By default, shows admin category logs and tier-related activities.
+    """
+    try:
+        from ..models import ActivityLog
+        
+        # Build base query
+        query = select(ActivityLog)
+        count_query = select(func.count(ActivityLog.id))
+        
+        # Build where clause conditions
+        where_clauses = []
+        
+        # Filter by category if provided, otherwise use default filter
+        if category:
+            where_clauses.append(ActivityLog.category == category)
+        else:
+            # Default: show admin/system categories or tier-related activities
+            # Use is_not() method for SQLAlchemy 2.0+ null check
+            where_clauses.append(
+                or_(
+                    ActivityLog.category == "admin",
+                    ActivityLog.activity_type == "tier_updated",
+                    ActivityLog.related_tier_id.is_not(None)
+                )
+            )
+        
+        # Filter by activity_type if provided
+        if activity_type:
+            where_clauses.append(ActivityLog.activity_type == activity_type)
+        
+        # Apply where clauses to both queries
+        if where_clauses:
+            if len(where_clauses) == 1:
+                query = query.where(where_clauses[0])
+                count_query = count_query.where(where_clauses[0])
+            else:
+                query = query.where(and_(*where_clauses))
+                count_query = count_query.where(and_(*where_clauses))
+        
+        # Execute main query with ordering and pagination
+        result = await session.execute(
+            query
+            .order_by(desc(ActivityLog.created_at))
+            .limit(limit)
+            .offset(skip)
+        )
+        logs = result.scalars().all()
+        
+        # Execute count query
+        count_result = await session.execute(count_query)
+        total = count_result.scalar()
+        
+        # Get actor user info for display
+        actor_ids = {log.actor_id for log in logs if log.actor_id}
+        actor_users = {}
+        if actor_ids:
+            users_result = await session.execute(
+                select(User).where(User.id.in_(actor_ids))
+            )
+            for user in users_result.scalars().all():
+                actor_users[str(user.id)] = {
+                    "id": str(user.id),
+                    "email": user.email,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                }
+        
+        return {
+            "logs": [
+                {
+                    "id": str(log.id),
+                    "activity_type": log.activity_type,
+                    "category": log.category,
+                    "action": log.action,
+                    "description": log.description,
+                    "reason": log.reason,
+                    "metadata": json.loads(log.additional_metadata) if log.additional_metadata else None,
+                    "changes": json.loads(log.changes) if log.changes else None,
+                    "ip_address": log.ip_address,
+                    "user_agent": log.user_agent,
+                    "country": log.country,
+                    "actor_type": log.actor_type,
+                    "actor": actor_users.get(str(log.actor_id)) if log.actor_id else None,
+                    "related_tier_id": str(log.related_tier_id) if log.related_tier_id else None,
+                    "created_at": log.created_at.isoformat(),
+                }
+                for log in logs
+            ],
+            "total": total,
+            "skip": skip,
+            "limit": limit
+        }
+    except Exception as e:
+        logger.error(f"Error getting system activity logs: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get system activity logs: {str(e)}")
+
 

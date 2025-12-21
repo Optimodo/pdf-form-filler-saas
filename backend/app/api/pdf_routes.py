@@ -137,6 +137,44 @@ async def process_pdf_batch_endpoint(
         template_content = await template.read()
         csv_content = await csv_data.read()
         
+        # Count CSV rows to determine required credits (for authenticated users)
+        required_credits = 0
+        credit_usage = None
+        if current_user:
+            from ..core.credit_manager import count_csv_rows, check_credits_available, calculate_credit_usage, apply_credit_usage
+            
+            try:
+                required_credits = count_csv_rows(csv_content)
+                logger.info(f"Job requires {required_credits} credits (PDFs to generate)")
+                
+                # Check if user has enough credits
+                has_enough, available_credits, error_msg = await check_credits_available(
+                    session=session,
+                    user=current_user,
+                    required_credits=required_credits
+                )
+                
+                if not has_enough:
+                    raise HTTPException(status_code=402, detail=error_msg)
+                
+                # Calculate credit allocation
+                credit_usage = await calculate_credit_usage(
+                    session=session,
+                    user=current_user,
+                    required_credits=required_credits
+                )
+                
+                logger.info(
+                    f"Credit allocation: {credit_usage['subscription_credits_used']} monthly, "
+                    f"{credit_usage['rollover_credits_used']} rollover, "
+                    f"{credit_usage['topup_credits_used']} topup"
+                )
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Error checking credits: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"Credit check failed: {str(e)}")
+        
         # Store template file
         template_file = await file_manager.store_uploaded_file(
             file_content=template_content,
@@ -217,6 +255,52 @@ async def process_pdf_batch_endpoint(
             
             logger.info(f"Batch processing completed: {result['successful_count']} of {result['total_count']} PDFs")
             
+            # Apply credit usage after successful processing (for authenticated users)
+            # Note: We apply credits based on successful_count, not required_credits
+            # This ensures users only pay for successfully generated PDFs
+            if current_user and result.get('successful_count', 0) > 0:
+                from ..core.credit_manager import calculate_credit_usage, apply_credit_usage
+                from sqlalchemy import select
+                from ..models import User
+                try:
+                    # Reload user from database to ensure we have the latest state
+                    user_result = await session.execute(
+                        select(User).where(User.id == current_user.id)
+                    )
+                    user_for_credits = user_result.scalar_one_or_none()
+                    
+                    if not user_for_credits:
+                        logger.error(f"User {current_user.id} not found in database when applying credits")
+                    else:
+                        # Recalculate credit usage based on actual successful count
+                        actual_credit_usage = await calculate_credit_usage(
+                            session=session,
+                            user=user_for_credits,
+                            required_credits=result.get('successful_count', 0)
+                        )
+                        
+                        logger.info(
+                            f"Applying credits: {actual_credit_usage['total_credits_consumed']} total "
+                            f"(monthly: {actual_credit_usage['subscription_credits_used']}, "
+                            f"rollover: {actual_credit_usage['rollover_credits_used']}, "
+                            f"topup: {actual_credit_usage['topup_credits_used']}) "
+                            f"for {result.get('successful_count', 0)} successful PDFs"
+                        )
+                        
+                        await apply_credit_usage(
+                            session=session,
+                            user=user_for_credits,
+                            credit_usage=actual_credit_usage
+                        )
+                        
+                        # Update credit_usage for job record
+                        credit_usage = actual_credit_usage
+                        
+                        logger.info(f"Credits successfully applied to user {user_for_credits.email}")
+                except Exception as e:
+                    logger.error(f"Error applying credits: {str(e)}", exc_info=True)
+                    # Continue even if credit application fails (already processed)
+        
         # Extract IP address for logging
         processing_ip = None
         if request:
@@ -231,10 +315,26 @@ async def process_pdf_batch_endpoint(
             csv_file=csv_file,
             session_id=session_id,
             result=result,
-            processing_ip=processing_ip
+            processing_ip=processing_ip,
+            credit_usage=credit_usage  # Pass credit usage details
         )
         
         # Log the activity
+        activity_metadata = {
+            "template_filename": template_file.original_filename,
+            "csv_filename": csv_file.original_filename,
+            "processing_time": result.get('processing_time', 0),
+        }
+        
+        # Add credit usage details if available
+        if credit_usage:
+            activity_metadata.update({
+                "total_credits_consumed": credit_usage.get('total_credits_consumed', 0),
+                "subscription_credits_used": credit_usage.get('subscription_credits_used', 0),
+                "rollover_credits_used": credit_usage.get('rollover_credits_used', 0),
+                "topup_credits_used": credit_usage.get('topup_credits_used', 0),
+            })
+        
         await activity_logger.log_pdf_processed(
             session=session,
             user_id=current_user.id if current_user else None,
@@ -242,11 +342,7 @@ async def process_pdf_batch_endpoint(
             pdf_count=result.get('total_count', 0),
             successful_count=result.get('successful_count', 0),
             request=request,
-            additional_metadata={
-                "template_filename": template_file.original_filename,
-                "csv_filename": csv_file.original_filename,
-                "processing_time": result.get('processing_time', 0),
-            }
+            additional_metadata=activity_metadata
         )
         
         return result
@@ -387,9 +483,7 @@ async def get_user_limits_endpoint(
             "max_csv_size_bytes": limits.max_csv_size,
             "max_pdf_size_display": format_file_size(limits.max_pdf_size),
             "max_csv_size_display": format_file_size(limits.max_csv_size),
-            "max_daily_jobs": limits.max_daily_jobs,
-            "max_monthly_jobs": limits.max_monthly_jobs,
-            "max_files_per_job": limits.max_files_per_job,
+            "max_pdfs_per_run": limits.max_pdfs_per_run,
             "can_save_templates": limits.can_save_templates,
             "can_use_api": limits.can_use_api,
             "priority_processing": limits.priority_processing,
@@ -503,7 +597,10 @@ async def get_user_processing_history(
                 "processing_time_seconds": job.processing_time_seconds,
                 "zip_filename": job.zip_filename,
                 "status": job.status,
-                "credits_consumed": job.credits_consumed,
+                "total_credits_consumed": job.total_credits_consumed,
+                "subscription_credits_used": job.subscription_credits_used,
+                "rollover_credits_used": job.rollover_credits_used,
+                "topup_credits_used": job.topup_credits_used,
                 "created_at": job.created_at.isoformat(),
                 "completed_at": job.completed_at.isoformat() if job.completed_at else None
             })

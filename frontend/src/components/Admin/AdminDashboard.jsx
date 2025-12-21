@@ -120,6 +120,10 @@ function AdminDashboard() {
           <h2>Storage</h2>
           <div className="stat-value">{stats.storage?.total_display || '0 bytes'}</div>
           <div className="stat-label">Total Storage Used</div>
+          <div className="stat-details">
+            <div>Input Files (Templates/CSV): {stats.storage?.input_display || '0 bytes'}</div>
+            <div>Output Files (PDF ZIPs): {stats.storage?.output_display || '0 bytes'}</div>
+          </div>
         </div>
       </div>
 
@@ -140,10 +144,19 @@ function AdminDashboard() {
         >
           Manage Subscription Tiers
         </button>
+        <button
+          onClick={() => {
+            window.location.pathname = '/admin/activity-logs';
+          }}
+          className="btn-primary"
+        >
+          View Activity Logs
+        </button>
       </div>
     </div>
   );
 }
 
 export default AdminDashboard;
+
 

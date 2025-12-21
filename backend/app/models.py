@@ -33,9 +33,7 @@ class SubscriptionTier(Base):
     max_csv_size: int = Column(Integer, nullable=False)
     
     # Processing limits
-    max_daily_jobs: int = Column(Integer, nullable=False)
-    max_monthly_jobs: int = Column(Integer, nullable=False)
-    max_files_per_job: int = Column(Integer, nullable=False)
+    max_pdfs_per_run: int = Column(Integer, nullable=False)  # Maximum PDFs allowed in a single processing run
     
     # Feature access
     can_save_templates: bool = Column(Boolean, default=False, nullable=False)
@@ -45,6 +43,9 @@ class SubscriptionTier(Base):
     # Storage limits
     max_saved_templates: int = Column(Integer, default=0, nullable=False)
     max_total_storage_mb: int = Column(Integer, default=0, nullable=False)
+    
+    # Monthly credit allowance
+    monthly_pdf_credits: int = Column(Integer, default=0, nullable=False)  # Monthly PDF credits for this tier
     
     # Tier ordering and visibility
     display_order: int = Column(Integer, default=0, nullable=False)  # For sorting in UI
@@ -68,9 +69,12 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
     last_name: Optional[str] = Column(String(100), nullable=True)
     
     # Subscription and billing
-    subscription_tier: str = Column(String(50), default="free", nullable=False)
-    credits_remaining: int = Column(Integer, default=10, nullable=False)  # Free tier starts with 10 credits
-    credits_used_this_month: int = Column(Integer, default=0, nullable=False)
+    subscription_tier: str = Column(String(50), default="standard", nullable=False)
+    credits_remaining: int = Column(Integer, default=0, nullable=False)  # Top-up credits (never expire, standalone purchases) - Standard tier starts with 0
+    credits_used_this_month: int = Column(Integer, default=0, nullable=False)  # Monthly subscription credits used
+    credits_rollover: int = Column(Integer, default=0, nullable=False)  # Rollover credits from previous months
+    credits_used_total: int = Column(Integer, default=0, nullable=False)  # Total credits used (lifetime)
+    total_pdf_runs: int = Column(Integer, default=0, nullable=False)  # Total PDF processing runs (job count)
     subscription_start_date: Optional[datetime] = Column(DateTime(timezone=True), nullable=True)
     subscription_end_date: Optional[datetime] = Column(DateTime(timezone=True), nullable=True)
     
@@ -78,9 +82,7 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
     custom_limits_enabled: bool = Column(Boolean, default=False, nullable=False)
     custom_max_pdf_size: Optional[int] = Column(Integer, nullable=True)      # Override PDF size limit
     custom_max_csv_size: Optional[int] = Column(Integer, nullable=True)      # Override CSV size limit  
-    custom_max_daily_jobs: Optional[int] = Column(Integer, nullable=True)    # Override daily job limit
-    custom_max_monthly_jobs: Optional[int] = Column(Integer, nullable=True)  # Override monthly job limit
-    custom_max_files_per_job: Optional[int] = Column(Integer, nullable=True) # Override files per job limit
+    custom_max_pdfs_per_run: Optional[int] = Column(Integer, nullable=True)  # Override max PDFs per run limit
     custom_can_save_templates: Optional[bool] = Column(Boolean, nullable=True) # Override template saving
     custom_can_use_api: Optional[bool] = Column(Boolean, nullable=True)      # Override API access
     custom_limits_reason: Optional[str] = Column(String(500), nullable=True) # Why custom limits were applied
@@ -194,8 +196,11 @@ class ProcessingJob(Base):
     status: str = Column(String(50), default="completed", nullable=False)  # completed, failed, processing
     error_message: Optional[str] = Column(Text, nullable=True)
     
-    # Credits
-    credits_consumed: int = Column(Integer, default=0, nullable=False)  # 0 for anonymous
+    # Credits - detailed tracking of credit sources
+    total_credits_consumed: int = Column(Integer, default=0, nullable=False)  # Total credits used for this job
+    subscription_credits_used: int = Column(Integer, default=0, nullable=False)  # Credits from monthly allowance
+    rollover_credits_used: int = Column(Integer, default=0, nullable=False)  # Credits from rollover balance
+    topup_credits_used: int = Column(Integer, default=0, nullable=False)  # Credits from top-up balance
     
     # Processing metadata
     session_id: Optional[str] = Column(String(100), nullable=True)  # For grouping related operations

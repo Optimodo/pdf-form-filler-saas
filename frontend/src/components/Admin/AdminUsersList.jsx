@@ -8,10 +8,25 @@ function AdminUsersList() {
   const [error, setError] = useState(null);
   const [pagination, setPagination] = useState({ skip: 0, limit: 50, total: 0 });
   const [filters, setFilters] = useState({ search: '', tier: '' });
+  const [availableTiers, setAvailableTiers] = useState([]);
 
   useEffect(() => {
     loadUsers();
+    loadTiers();
   }, [pagination.skip, pagination.limit, filters.search, filters.tier]);
+
+  const loadTiers = async () => {
+    try {
+      const data = await APIService.listSubscriptionTiers();
+      const activeTiers = (data.tiers || [])
+        .filter(tier => tier.is_active)
+        .sort((a, b) => (a.display_order || 999) - (b.display_order || 999));
+      setAvailableTiers(activeTiers);
+    } catch (err) {
+      console.error('Failed to load tiers:', err);
+      setAvailableTiers([]);
+    }
+  };
 
   const loadUsers = async () => {
     try {
@@ -85,13 +100,19 @@ function AdminUsersList() {
 
         <div className="tier-filters">
           <span>Filter by tier:</span>
-          {['free', 'member', 'pro', 'enterprise'].map(tier => (
+          <button
+            onClick={() => handleTierFilter('')}
+            className={`tier-filter-btn ${filters.tier === '' ? 'active' : ''}`}
+          >
+            All
+          </button>
+          {availableTiers.map(tier => (
             <button
-              key={tier}
-              onClick={() => handleTierFilter(tier)}
-              className={`tier-filter-btn ${filters.tier === tier ? 'active' : ''}`}
+              key={tier.tier_key}
+              onClick={() => handleTierFilter(tier.tier_key)}
+              className={`tier-filter-btn ${filters.tier === tier.tier_key ? 'active' : ''}`}
             >
-              {tier}
+              {tier.display_name}
             </button>
           ))}
         </div>
@@ -126,7 +147,7 @@ function AdminUsersList() {
                 <td>{user.first_name || ''} {user.last_name || ''}</td>
                 <td>
                   <span className={`tier-badge tier-${user.subscription_tier}`}>
-                    {user.subscription_tier}
+                    {availableTiers.find(t => t.tier_key === user.subscription_tier)?.display_name || user.subscription_tier}
                   </span>
                 </td>
                 <td>
@@ -187,4 +208,5 @@ function AdminUsersList() {
 }
 
 export default AdminUsersList;
+
 

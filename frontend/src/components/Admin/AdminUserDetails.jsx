@@ -18,15 +18,39 @@ function AdminUserDetails() {
   const [limitValues, setLimitValues] = useState({});
   const [reasonInput, setReasonInput] = useState(''); // For inline reason input
   const [showReasonInput, setShowReasonInput] = useState(false); // Show reason input when saving limits
+  const [editingCredits, setEditingCredits] = useState(false);
+  const [creditValues, setCreditValues] = useState({});
   const [activityLogs, setActivityLogs] = useState([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [showActivityLogs, setShowActivityLogs] = useState(false);
+  const [jobs, setJobs] = useState([]);
+  const [loadingJobs, setLoadingJobs] = useState(false);
+  const [jobsPage, setJobsPage] = useState(1);
+  const [jobsPagination, setJobsPagination] = useState(null);
+  const [availableTiers, setAvailableTiers] = useState([]);
 
   useEffect(() => {
     if (userId) {
       loadUserDetails();
+      loadJobs(1);
     }
+    loadTiers();
   }, [userId]);
+
+  const loadTiers = async () => {
+    try {
+      const data = await APIService.listSubscriptionTiers();
+      // Filter to only active tiers and sort by display_order
+      const activeTiers = (data.tiers || [])
+        .filter(tier => tier.is_active)
+        .sort((a, b) => (a.display_order || 999) - (b.display_order || 999));
+      setAvailableTiers(activeTiers);
+    } catch (err) {
+      console.error('Failed to load tiers:', err);
+      // If loading fails, we'll just not show tier buttons
+      setAvailableTiers([]);
+    }
+  };
 
   const loadActivityLogs = async () => {
     try {
@@ -38,6 +62,49 @@ function AdminUserDetails() {
       showMessage(`Failed to load activity logs: ${err.message}`, 'error');
     } finally {
       setLoadingLogs(false);
+    }
+  };
+
+  const loadJobs = async (page = 1) => {
+    try {
+      setLoadingJobs(true);
+      const data = await APIService.getUserJobs(userId, page, 10);
+      setJobs(data.jobs || []);
+      setJobsPagination(data.pagination);
+      setJobsPage(page);
+    } catch (err) {
+      console.error('Failed to load jobs:', err);
+      showMessage(`Failed to load jobs: ${err.message}`, 'error');
+    } finally {
+      setLoadingJobs(false);
+    }
+  };
+
+  const handleFileDownload = async (url, filename) => {
+    try {
+      const token = localStorage.getItem('access_token');
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to download file');
+      }
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (err) {
+      console.error('Download error:', err);
+      showMessage(`Failed to download file: ${err.message}`, 'error');
     }
   };
 
@@ -55,11 +122,20 @@ function AdminUserDetails() {
         setLimitValues({
           max_pdf_size: parseFloat(bytesToMb(pdfBytes)),
           max_csv_size: parseFloat(bytesToMb(csvBytes)),
-          max_daily_jobs: limits.max_daily_jobs,
-          max_monthly_jobs: limits.max_monthly_jobs,
-          max_files_per_job: limits.max_files_per_job,
+          max_pdfs_per_run: limits.max_pdfs_per_run,
           can_save_templates: limits.can_save_templates,
           can_use_api: limits.can_use_api,
+        });
+      }
+      
+      // Initialize credit values for editing
+      if (data.user) {
+        setCreditValues({
+          credits_remaining: data.user.credits_remaining,
+          credits_rollover: data.user.credits_rollover,
+          credits_used_this_month: data.user.credits_used_this_month,
+          credits_used_total: data.user.credits_used_total,
+          total_pdf_runs: data.user.total_pdf_runs,
         });
       }
       
@@ -127,9 +203,7 @@ function AdminUserDetails() {
       const customLimits = {
         max_pdf_size: mbToBytes(limitValues.max_pdf_size),
         max_csv_size: mbToBytes(limitValues.max_csv_size),
-        max_daily_jobs: parseInt(limitValues.max_daily_jobs),
-        max_monthly_jobs: parseInt(limitValues.max_monthly_jobs),
-        max_files_per_job: parseInt(limitValues.max_files_per_job),
+        max_pdfs_per_run: parseInt(limitValues.max_pdfs_per_run),
         can_save_templates: limitValues.can_save_templates,
         can_use_api: limitValues.can_use_api,
       };
@@ -150,6 +224,25 @@ function AdminUserDetails() {
     setEditingLimits(false);
     setShowReasonInput(false);
     setReasonInput('');
+    loadUserDetails(); // Reset to original values
+  };
+
+  const handleSaveCredits = async () => {
+    try {
+      setActionLoading(true);
+      await APIService.updateUserCredits(userId, creditValues);
+      await loadUserDetails();
+      setEditingCredits(false);
+      showMessage('Credits updated successfully');
+    } catch (err) {
+      showMessage(`Failed to update credits: ${err.message}`, 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleCancelEditCredits = () => {
+    setEditingCredits(false);
     loadUserDetails(); // Reset to original values
   };
 
@@ -241,7 +334,7 @@ function AdminUserDetails() {
     );
   }
 
-  const { user, limits, statistics, recent_jobs } = userData;
+  const { user, limits, statistics } = userData;
 
   return (
     <div className="admin-user-details">
@@ -296,14 +389,14 @@ function AdminUserDetails() {
               <label>Subscription Tier</label>
               <div className="tier-selector">
                 <span className={`tier-badge tier-${user.subscription_tier}`}>
-                  {user.subscription_tier}
+                  {availableTiers.find(t => t.tier_key === user.subscription_tier)?.display_name || user.subscription_tier}
                 </span>
                 <div className="tier-buttons">
-                  {['free', 'member', 'pro', 'enterprise'].map(tier => (
-                    <React.Fragment key={tier}>
-                      {pendingTierChange === tier ? (
+                  {availableTiers.map(tier => (
+                    <React.Fragment key={tier.tier_key}>
+                      {pendingTierChange === tier.tier_key ? (
                         <div className="inline-confirmation">
-                          <span className="confirmation-message">Change to {tier}? (This will remove custom limits)</span>
+                          <span className="confirmation-message">Change to {tier.display_name}? (This will remove custom limits)</span>
                           <button
                             onClick={handleConfirmTierChange}
                             disabled={actionLoading}
@@ -321,11 +414,12 @@ function AdminUserDetails() {
                         </div>
                       ) : (
                         <button
-                          onClick={() => handleUpdateSubscriptionClick(tier)}
-                          disabled={actionLoading || tier === user.subscription_tier || pendingTierChange !== null}
+                          onClick={() => handleUpdateSubscriptionClick(tier.tier_key)}
+                          disabled={actionLoading || tier.tier_key === user.subscription_tier || pendingTierChange !== null}
                           className="btn-small"
+                          title={tier.description || tier.display_name}
                         >
-                          {tier}
+                          {tier.display_name}
                         </button>
                       )}
                     </React.Fragment>
@@ -342,9 +436,112 @@ function AdminUserDetails() {
                 {user.is_superuser && <span className="admin-badge">Admin</span>}
               </div>
             </div>
-            <div className="info-item">
-              <label>Credits</label>
-              <div>Remaining: {user.credits_remaining} | Used this month: {user.credits_used_this_month}</div>
+          </div>
+        </section>
+
+        {/* Credits Management */}
+        <section className="info-section">
+          <div className="section-header">
+            <h2>Credits Management</h2>
+            <div className="section-actions">
+              {!editingCredits ? (
+                <button
+                  onClick={() => setEditingCredits(true)}
+                  className="btn-primary"
+                  disabled={actionLoading}
+                >
+                  Edit Credits
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={handleSaveCredits}
+                    className="btn-primary"
+                    disabled={actionLoading}
+                  >
+                    Save Credits
+                  </button>
+                  <button
+                    onClick={handleCancelEditCredits}
+                    className="btn-secondary"
+                    disabled={actionLoading}
+                  >
+                    Cancel
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="credits-grid">
+            <div className="credit-item">
+              <label>Credits Remaining (Top-up)</label>
+              {editingCredits ? (
+                <input
+                  type="number"
+                  value={creditValues.credits_remaining !== undefined ? creditValues.credits_remaining : user.credits_remaining}
+                  onChange={(e) => setCreditValues({...creditValues, credits_remaining: parseInt(e.target.value) || 0})}
+                  className="credit-input"
+                  min="0"
+                />
+              ) : (
+                <div>{user.credits_remaining}</div>
+              )}
+            </div>
+            <div className="credit-item">
+              <label>Credits Rollover</label>
+              {editingCredits ? (
+                <input
+                  type="number"
+                  value={creditValues.credits_rollover !== undefined ? creditValues.credits_rollover : user.credits_rollover}
+                  onChange={(e) => setCreditValues({...creditValues, credits_rollover: parseInt(e.target.value) || 0})}
+                  className="credit-input"
+                  min="0"
+                />
+              ) : (
+                <div>{user.credits_rollover}</div>
+              )}
+            </div>
+            <div className="credit-item">
+              <label>Credits Used This Month</label>
+              {editingCredits ? (
+                <input
+                  type="number"
+                  value={creditValues.credits_used_this_month !== undefined ? creditValues.credits_used_this_month : user.credits_used_this_month}
+                  onChange={(e) => setCreditValues({...creditValues, credits_used_this_month: parseInt(e.target.value) || 0})}
+                  className="credit-input"
+                  min="0"
+                />
+              ) : (
+                <div>{user.credits_used_this_month}</div>
+              )}
+            </div>
+            <div className="credit-item">
+              <label>Total Credits Used (Lifetime)</label>
+              {editingCredits ? (
+                <input
+                  type="number"
+                  value={creditValues.credits_used_total !== undefined ? creditValues.credits_used_total : user.credits_used_total}
+                  onChange={(e) => setCreditValues({...creditValues, credits_used_total: parseInt(e.target.value) || 0})}
+                  className="credit-input"
+                  min="0"
+                />
+              ) : (
+                <div>{user.credits_used_total}</div>
+              )}
+            </div>
+            <div className="credit-item">
+              <label>Total PDF Runs</label>
+              {editingCredits ? (
+                <input
+                  type="number"
+                  value={creditValues.total_pdf_runs !== undefined ? creditValues.total_pdf_runs : user.total_pdf_runs}
+                  onChange={(e) => setCreditValues({...creditValues, total_pdf_runs: parseInt(e.target.value) || 0})}
+                  className="credit-input"
+                  min="0"
+                />
+              ) : (
+                <div>{user.total_pdf_runs}</div>
+              )}
             </div>
           </div>
         </section>
@@ -466,42 +663,16 @@ function AdminUserDetails() {
                 )}
               </div>
               <div className="limit-item">
-                <label>Daily Jobs</label>
+                <label>Max PDFs per Run</label>
                 {editingLimits ? (
                   <input
                     type="number"
-                    value={limitValues.max_daily_jobs || limits.current_limits.max_daily_jobs}
-                    onChange={(e) => setLimitValues({...limitValues, max_daily_jobs: e.target.value})}
+                    value={limitValues.max_pdfs_per_run !== undefined ? limitValues.max_pdfs_per_run : limits.current_limits.max_pdfs_per_run}
+                    onChange={(e) => setLimitValues({...limitValues, max_pdfs_per_run: parseInt(e.target.value) || 0})}
                     className="limit-input"
                   />
                 ) : (
-                  <div>{limits.current_limits.max_daily_jobs}</div>
-                )}
-              </div>
-              <div className="limit-item">
-                <label>Monthly Jobs</label>
-                {editingLimits ? (
-                  <input
-                    type="number"
-                    value={limitValues.max_monthly_jobs || limits.current_limits.max_monthly_jobs}
-                    onChange={(e) => setLimitValues({...limitValues, max_monthly_jobs: e.target.value})}
-                    className="limit-input"
-                  />
-                ) : (
-                  <div>{limits.current_limits.max_monthly_jobs}</div>
-                )}
-              </div>
-              <div className="limit-item">
-                <label>Files per Job</label>
-                {editingLimits ? (
-                  <input
-                    type="number"
-                    value={limitValues.max_files_per_job || limits.current_limits.max_files_per_job}
-                    onChange={(e) => setLimitValues({...limitValues, max_files_per_job: e.target.value})}
-                    className="limit-input"
-                  />
-                ) : (
-                  <div>{limits.current_limits.max_files_per_job}</div>
+                  <div>{limits.current_limits.max_pdfs_per_run}</div>
                 )}
               </div>
               <div className="limit-item">
@@ -548,8 +719,8 @@ function AdminUserDetails() {
           <h2>Usage Statistics</h2>
           <div className="stats-grid">
             <div className="stat-item">
-              <div className="stat-value">{statistics.total_jobs}</div>
-              <div className="stat-label">Total Jobs</div>
+              <div className="stat-value">{statistics.total_pdf_runs}</div>
+              <div className="stat-label">Total PDF Runs</div>
             </div>
             <div className="stat-item">
               <div className="stat-value">{statistics.total_files}</div>
@@ -562,27 +733,105 @@ function AdminUserDetails() {
           </div>
         </section>
 
-        {/* Recent Jobs */}
-        {recent_jobs && recent_jobs.length > 0 && (
-          <section className="info-section">
-            <h2>Recent Processing Jobs</h2>
-            <div className="jobs-list">
-              {recent_jobs.map(job => (
-                <div key={job.id} className="job-item">
-                  <div className="job-header">
-                    <span className="job-status">{job.status}</span>
-                    <span className="job-date">{new Date(job.created_at).toLocaleString()}</span>
-                  </div>
-                  <div className="job-details">
-                    <div>Template: {job.template_filename}</div>
-                    <div>CSV: {job.csv_filename}</div>
-                    <div>PDFs: {job.successful_count} / {job.pdf_count}</div>
-                  </div>
+        {/* Processing Jobs */}
+        <section className="info-section">
+          <h2>Processing Jobs</h2>
+          {loadingJobs ? (
+            <div className="loading">Loading jobs...</div>
+          ) : jobs.length > 0 ? (
+            <>
+              <div className="jobs-list-compact">
+                {/* Header row */}
+                <div className="job-item-compact job-header-row">
+                  <div>Status</div>
+                  <div>Template</div>
+                  <div>CSV</div>
+                  <div>PDFs</div>
+                  <div>Date</div>
+                  <div>Actions</div>
                 </div>
-              ))}
-            </div>
-          </section>
-        )}
+                {jobs.map(job => (
+                  <div key={job.id} className="job-item-compact">
+                    <span className={`job-status job-status-${job.status}`}>{job.status}</span>
+                    <div className="job-template-col">
+                      {job.template_file ? (
+                        <button
+                          onClick={() => handleFileDownload(
+                            APIService.getFileDownloadUrl(job.template_file.id),
+                            job.template_file.original_filename
+                          )}
+                          className="job-file-link btn-link"
+                          title={job.template_file.original_filename}
+                        >
+                          {job.template_filename}
+                        </button>
+                      ) : (
+                        <span title={job.template_filename}>{job.template_filename}</span>
+                      )}
+                    </div>
+                    <div className="job-csv-col">
+                      {job.csv_file ? (
+                        <button
+                          onClick={() => handleFileDownload(
+                            APIService.getFileDownloadUrl(job.csv_file.id),
+                            job.csv_file.original_filename
+                          )}
+                          className="job-file-link btn-link"
+                          title={job.csv_file.original_filename}
+                        >
+                          {job.csv_filename}
+                        </button>
+                      ) : (
+                        <span title={job.csv_filename}>{job.csv_filename}</span>
+                      )}
+                    </div>
+                    <div className="job-pdfs-col">
+                      {job.successful_count} / {job.pdf_count}
+                    </div>
+                    <span className="job-date-compact">{new Date(job.created_at).toLocaleString()}</span>
+                    <div className="job-actions-col">
+                      {job.zip_filename && job.zip_file_path && (
+                        <button
+                          onClick={() => handleFileDownload(
+                            APIService.getJobZipDownloadUrl(job.id),
+                            job.zip_filename
+                          )}
+                          className="btn-link"
+                          title="Download ZIP output"
+                        >
+                          ZIP
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {jobsPagination && jobsPagination.total_pages > 1 && (
+                <div className="jobs-pagination">
+                  <button
+                    onClick={() => loadJobs(jobsPage - 1)}
+                    disabled={jobsPage === 1 || loadingJobs}
+                    className="btn-secondary btn-small"
+                  >
+                    Previous
+                  </button>
+                  <span className="pagination-info">
+                    Page {jobsPage} of {jobsPagination.total_pages} ({jobsPagination.total_count} total)
+                  </span>
+                  <button
+                    onClick={() => loadJobs(jobsPage + 1)}
+                    disabled={jobsPage >= jobsPagination.total_pages || loadingJobs}
+                    className="btn-secondary btn-small"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="no-jobs">No processing jobs found</div>
+          )}
+        </section>
 
         {/* Activity Log History */}
         <section className="info-section">
@@ -608,19 +857,25 @@ function AdminUserDetails() {
                 <div className="no-logs">No activity logs found</div>
               ) : (
                 <div className="logs-list">
+                  {/* Header row */}
+                  <div className="log-item log-header-row">
+                    <div>Category</div>
+                    <div>Type</div>
+                    <div>Action</div>
+                    <div>Description</div>
+                    <div>Date</div>
+                  </div>
                   {activityLogs.map(log => (
                     <div key={log.id} className="log-item">
-                      <div className="log-header">
-                        <span className={`log-category log-category-${log.category}`}>
-                          {log.category}
-                        </span>
-                        <span className="log-type">{log.activity_type.replace(/_/g, ' ')}</span>
-                        <span className="log-date">{new Date(log.created_at).toLocaleString()}</span>
-                      </div>
+                      <span className={`log-category log-category-${log.category}`}>
+                        {log.category}
+                      </span>
+                      <span className="log-type">{log.activity_type.replace(/_/g, ' ')}</span>
                       <div className="log-action">{log.action}</div>
-                      {log.description && (
-                        <div className="log-description">{log.description}</div>
-                      )}
+                      <div className="log-description">
+                        {log.description || '-'}
+                      </div>
+                      <span className="log-date">{new Date(log.created_at).toLocaleString()}</span>
                       {log.reason && (
                         <div className="log-reason">
                           <strong>Reason:</strong> {log.reason}
@@ -632,11 +887,13 @@ function AdminUserDetails() {
                           <pre>{JSON.stringify(log.changes, null, 2)}</pre>
                         </div>
                       )}
-                      <div className="log-metadata">
-                        {log.ip_address && <span>IP: {log.ip_address}</span>}
-                        {log.country && <span>Country: {log.country}</span>}
-                        {log.actor_type && <span>Actor: {log.actor_type}</span>}
-                      </div>
+                      {(log.ip_address || log.country || log.actor_type) && (
+                        <div className="log-metadata">
+                          {log.ip_address && <span>IP: {log.ip_address}</span>}
+                          {log.country && <span>Country: {log.country}</span>}
+                          {log.actor_type && <span>Actor: {log.actor_type}</span>}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -650,4 +907,5 @@ function AdminUserDetails() {
 }
 
 export default AdminUserDetails;
+
 

@@ -37,7 +37,7 @@ async def set_custom_user_limits(
             "user-uuid-here",
             {
                 "max_pdf_size": 50 * 1024 * 1024,  # 50MB
-                "max_daily_jobs": 100,
+                "max_pdfs_per_run": 500,
                 "can_use_api": True
             },
             "Enterprise client - special contract",
@@ -64,14 +64,8 @@ async def set_custom_user_limits(
         if "max_csv_size" in custom_limits:
             user.custom_max_csv_size = custom_limits["max_csv_size"]
         
-        if "max_daily_jobs" in custom_limits:
-            user.custom_max_daily_jobs = custom_limits["max_daily_jobs"]
-        
-        if "max_monthly_jobs" in custom_limits:
-            user.custom_max_monthly_jobs = custom_limits["max_monthly_jobs"]
-        
-        if "max_files_per_job" in custom_limits:
-            user.custom_max_files_per_job = custom_limits["max_files_per_job"]
+        if "max_pdfs_per_run" in custom_limits:
+            user.custom_max_pdfs_per_run = custom_limits["max_pdfs_per_run"]
         
         if "can_save_templates" in custom_limits:
             user.custom_can_save_templates = custom_limits["can_save_templates"]
@@ -121,9 +115,7 @@ async def remove_custom_user_limits(
         user.custom_limits_enabled = False
         user.custom_max_pdf_size = None
         user.custom_max_csv_size = None
-        user.custom_max_daily_jobs = None
-        user.custom_max_monthly_jobs = None
-        user.custom_max_files_per_job = None
+        user.custom_max_pdfs_per_run = None
         user.custom_can_save_templates = None
         user.custom_can_use_api = None
         user.custom_limits_reason = None
@@ -173,9 +165,7 @@ async def get_user_limits_summary(session: AsyncSession, user_id: str) -> Dict[s
             "current_limits": {
                 "max_pdf_size": f"{format_file_size(limits.max_pdf_size)}",
                 "max_csv_size": f"{format_file_size(limits.max_csv_size)}",
-                "max_daily_jobs": limits.max_daily_jobs,
-                "max_monthly_jobs": limits.max_monthly_jobs,
-                "max_files_per_job": limits.max_files_per_job,
+                "max_pdfs_per_run": limits.max_pdfs_per_run,
                 "can_save_templates": limits.can_save_templates,
                 "can_use_api": limits.can_use_api,
                 "priority_processing": limits.priority_processing,
@@ -184,6 +174,10 @@ async def get_user_limits_summary(session: AsyncSession, user_id: str) -> Dict[s
                 "is_active": user.is_active,
                 "is_premium": user.is_premium,
                 "credits_remaining": user.credits_remaining,
+                "credits_rollover": user.credits_rollover,
+                "credits_used_this_month": user.credits_used_this_month,
+                "credits_used_total": user.credits_used_total,
+                "total_pdf_runs": user.total_pdf_runs,
                 "created_at": user.created_at.isoformat(),
                 "last_login": user.last_login.isoformat() if user.last_login else None,
             }
@@ -198,8 +192,7 @@ CUSTOM_LIMIT_TEMPLATES = {
     "enterprise_trial": {
         "max_pdf_size": 20 * 1024 * 1024,      # 20MB
         "max_csv_size": 5 * 1024 * 1024,       # 5MB
-        "max_daily_jobs": 50,
-        "max_monthly_jobs": 500,
+        "max_pdfs_per_run": 500,
         "can_save_templates": True,
         "can_use_api": True,
     },
@@ -207,23 +200,20 @@ CUSTOM_LIMIT_TEMPLATES = {
     "vvip_client": {
         "max_pdf_size": 100 * 1024 * 1024,     # 100MB
         "max_csv_size": 25 * 1024 * 1024,      # 25MB
-        "max_daily_jobs": 500,
-        "max_monthly_jobs": 5000,
-        "max_files_per_job": 5000,
+        "max_pdfs_per_run": 5000,
         "can_save_templates": True,
         "can_use_api": True,
     },
     
     "beta_tester": {
-        "max_daily_jobs": 20,                  # Higher than free tier
-        "max_monthly_jobs": 100,
+        "max_pdfs_per_run": 200,               # Higher than free tier
         "can_save_templates": True,            # Access to pro features
     },
     
     "support_team": {
         "max_pdf_size": 50 * 1024 * 1024,      # 50MB for testing
         "max_csv_size": 10 * 1024 * 1024,      # 10MB for testing
-        "max_daily_jobs": 100,
+        "max_pdfs_per_run": 1000,
         "can_save_templates": True,
         "can_use_api": True,
     }

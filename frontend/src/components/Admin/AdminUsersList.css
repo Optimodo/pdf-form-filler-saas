@@ -36,14 +36,20 @@ main.main-container.admin-main-container {
   display: flex;
   gap: 1rem;
   margin-bottom: 1rem;
+  align-items: center;
 }
 
 .search-input {
   flex: 1;
-  padding: 0.75rem;
+  padding: 0.75rem 1rem;
   border: 1px solid var(--border-color);
   border-radius: 4px;
   font-size: 1rem;
+  background-color: var(--card-bg);
+  color: var(--text-primary);
+  height: auto;
+  box-sizing: border-box;
+  line-height: 1.5;
 }
 
 .tier-filters {
@@ -54,7 +60,7 @@ main.main-container.admin-main-container {
 }
 
 .tier-filters > span {
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font-weight: 500;
 }
 
@@ -62,9 +68,11 @@ main.main-container.admin-main-container {
   padding: 0.5rem 1rem;
   border: 1px solid var(--border-color);
   background: var(--bg-secondary);
+  color: var(--text-primary);
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
+  font-size: 0.9rem;
 }
 
 .tier-filter-btn:hover {
@@ -177,12 +185,14 @@ main.main-container.admin-main-container {
   text-transform: capitalize;
 }
 
-.tier-free {
+.tier-free,
+.tier-anon {
   background: #e0e0e0;
   color: #333;
 }
 
-.tier-member {
+.tier-member,
+.tier-standard {
   background: #4caf50;
   color: white;
 }
@@ -309,4 +319,5 @@ main.main-container.admin-main-container {
     font-size: 0.85rem;
   }
 }
+
 

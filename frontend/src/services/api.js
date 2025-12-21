@@ -501,6 +501,53 @@ class APIService {
   }
 
   /**
+   * Get paginated processing jobs for a user
+   * @param {string} userId - User ID
+   * @param {number} page - Page number (1-indexed)
+   * @param {number} limit - Number of jobs per page
+   * @returns {Promise} - Jobs data with pagination info
+   */
+  async getUserJobs(userId, page = 1, limit = 10) {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/admin/users/${userId}/jobs?page=${page}&limit=${limit}`,
+        {
+          headers: {
+            ...this.getAuthHeaders(),
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw await this.handleApiError(response, 'Failed to get user jobs');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Get User Jobs Error:', error);
+      throw this.handleNetworkError(error, 'getting user jobs');
+    }
+  }
+
+  /**
+   * Get download URL for a file
+   * @param {string} fileId - File ID
+   * @returns {string} - Download URL
+   */
+  getFileDownloadUrl(fileId) {
+    return `${API_BASE_URL}/api/admin/files/${fileId}/download`;
+  }
+
+  /**
+   * Get download URL for a job ZIP file
+   * @param {string} jobId - Job ID
+   * @returns {string} - Download URL
+   */
+  getJobZipDownloadUrl(jobId) {
+    return `${API_BASE_URL}/api/admin/jobs/${jobId}/download-zip`;
+  }
+
+  /**
    * Update user subscription tier
    * @param {string} userId - User ID
    * @param {string} tier - Subscription tier
@@ -720,6 +767,41 @@ class APIService {
   }
 
   /**
+   * Get system-wide activity logs (non-user-specific changes)
+   * @param {string} category - Optional category filter (e.g., 'admin', 'system')
+   * @param {string} activityType - Optional activity type filter (e.g., 'tier_updated')
+   * @param {number} limit - Maximum number of logs to return
+   * @param {number} skip - Number of logs to skip
+   * @returns {Promise} - Activity logs data
+   */
+  async getSystemActivityLogs(category = null, activityType = null, limit = 100, skip = 0) {
+    try {
+      let url = `${API_BASE_URL}/api/admin/activity-logs?limit=${limit}&skip=${skip}`;
+      if (category) {
+        url += `&category=${encodeURIComponent(category)}`;
+      }
+      if (activityType) {
+        url += `&activity_type=${encodeURIComponent(activityType)}`;
+      }
+
+      const response = await fetch(url, {
+        headers: {
+          ...this.getAuthHeaders(),
+        },
+      });
+
+      if (!response.ok) {
+        throw await this.handleApiError(response, 'Failed to get system activity logs');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Get System Activity Logs Error:', error);
+      throw this.handleNetworkError(error, 'getting system activity logs');
+    }
+  }
+
+  /**
    * Remove custom limits from a user
    * @param {string} userId - User ID
    * @returns {Promise} - Update result
@@ -744,6 +826,37 @@ class APIService {
     } catch (error) {
       console.error('Remove Custom Limits Error:', error);
       throw this.handleNetworkError(error, 'removing custom limits');
+    }
+  }
+
+  /**
+   * Update user credit balances (for admin testing/debugging)
+   * @param {string} userId - User ID
+   * @param {object} creditsData - Credit fields to update (credits_remaining, credits_rollover, credits_used_this_month, credits_used_total, total_pdf_runs)
+   * @returns {Promise} - Updated user credits
+   */
+  async updateUserCredits(userId, creditsData) {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/admin/users/${userId}/credits`,
+        {
+          method: 'PATCH',
+          headers: {
+            ...this.getAuthHeaders(),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(creditsData),
+        }
+      );
+
+      if (!response.ok) {
+        throw await this.handleApiError(response, 'Failed to update credits');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Update User Credits Error:', error);
+      throw this.handleNetworkError(error, 'updating user credits');
     }
   }
 

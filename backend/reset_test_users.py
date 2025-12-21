@@ -1,19 +1,28 @@
 """
-Quick script to create test users for admin panel testing.
+Script to wipe all non-admin users and recreate test users with known passwords.
 
 Run this from the backend container:
-docker-compose exec backend python create_test_users.py
+docker-compose exec backend python reset_test_users.py
+
+WARNING: This will delete ALL users except those with is_superuser=True
 """
 import asyncio
 import uuid
 from datetime import datetime
 from app.database import get_async_session
 from app.models import User
-from sqlalchemy import select
+from sqlalchemy import select, delete
+import bcrypt
 
 
-async def create_test_users():
-    """Create a variety of test users for admin testing."""
+async def reset_test_users():
+    """Delete all non-admin users and create fresh test users."""
+    
+    # Hash password once for all test users using bcrypt directly
+    test_password = "password"
+    # Encode password to bytes and hash using bcrypt
+    password_bytes = test_password.encode('utf-8')
+    hashed_password = bcrypt.hashpw(password_bytes, bcrypt.gensalt()).decode('utf-8')
     
     test_users = [
         {
@@ -72,16 +81,14 @@ async def create_test_users():
             "last_name": "Limits",
             "subscription_tier": "pro",
             "credits_remaining": 500,
+            "credits_rollover": 0,
+            "credits_used_total": 200,
             "is_active": True,
             "custom_limits_enabled": True,
             "custom_max_pdf_size": 50 * 1024 * 1024,  # 50MB
             "custom_max_csv_size": 10 * 1024 * 1024,  # 10MB
             "custom_max_pdfs_per_run": 500,  # Custom limit for PDFs per run
-            "custom_can_save_templates": True,
-            "custom_can_use_api": True,
             "custom_limits_reason": "VIP client - special contract",
-            "credits_rollover": 0,
-            "credits_used_total": 200,
         },
         {
             "email": "john.doe@test.com",
@@ -126,28 +133,26 @@ async def create_test_users():
     ]
     
     async for session in get_async_session():
+        # Step 1: Delete all non-admin users
+        print("🗑️  Deleting all non-admin users...")
+        result = await session.execute(
+            select(User).where(User.is_superuser == False)
+        )
+        users_to_delete = result.scalars().all()
+        deleted_count = len(users_to_delete)
+        
+        for user in users_to_delete:
+            await session.delete(user)
+            print(f"   Deleted: {user.email}")
+        
+        await session.commit()
+        print(f"✅ Deleted {deleted_count} non-admin users\n")
+        
+        # Step 2: Create new test users
+        print("👥 Creating test users...")
         created_count = 0
-        skipped_count = 0
         
         for user_data in test_users:
-            # Check if user already exists
-            result = await session.execute(
-                select(User).where(User.email == user_data["email"])
-            )
-            existing_user = result.scalar_one_or_none()
-            
-            if existing_user:
-                print(f"⏭️  User {user_data['email']} already exists, skipping...")
-                skipped_count += 1
-                continue
-            
-            # Hash password using bcrypt directly (same algorithm FastAPI-Users uses)
-            # Default password for all test users is "password"
-            import bcrypt
-            test_password = "password"
-            password_bytes = test_password.encode('utf-8')
-            hashed_password = bcrypt.hashpw(password_bytes, bcrypt.gensalt()).decode('utf-8')
-            
             # Create new user
             new_user = User(
                 id=uuid.uuid4(),
@@ -178,20 +183,23 @@ async def create_test_users():
             session.add(new_user)
             created_count += 1
             tier = user_data.get("subscription_tier", "standard")
-            print(f"✅ Created user: {user_data['email']} ({tier} tier) - password: {test_password}")
+            print(f"✅ Created user: {user_data['email']} ({tier} tier)")
         
         await session.commit()
         
         print(f"\n📊 Summary:")
-        print(f"   Created: {created_count} users")
-        print(f"   Skipped: {skipped_count} users (already exist)")
-        print(f"\n💡 All test users have password set to: password")
-        print(f"   You can log in with any test user email and password 'password'")
+        print(f"   Deleted: {deleted_count} non-admin users")
+        print(f"   Created: {created_count} test users")
+        print(f"\n💡 All test users have password set to: {test_password}")
+        print(f"   You can log in with any test user email and password '{test_password}'")
+        print(f"\n📋 Test users created:")
+        print(f"   - Standard tier users: 5 (standard.user@test.com, standard.user2@test.com, etc.)")
+        print(f"   - Pro tier users: 3 (pro.user@test.com, jane.smith@test.com, custom.limits@test.com)")
+        print(f"   - Enterprise tier users: 1 (enterprise.user@test.com)")
+        print(f"   - Inactive user: 1 (inactive.user@test.com)")
 
 
 if __name__ == "__main__":
-    print("🚀 Creating test users...\n")
-    asyncio.run(create_test_users())
+    print("🚀 Resetting test users (deleting non-admin users and creating fresh test users)...\n")
+    asyncio.run(reset_test_users())
     print("\n✨ Done!")
-
-

@@ -21,9 +21,7 @@ class UserLimits:
     max_csv_size: int
     
     # Processing limits
-    max_daily_jobs: int
-    max_monthly_jobs: int
-    max_files_per_job: int
+    max_pdfs_per_run: int  # Maximum PDFs allowed in a single processing run
     
     # Feature access
     can_save_templates: bool
@@ -33,6 +31,9 @@ class UserLimits:
     # Storage limits
     max_saved_templates: int
     max_total_storage_mb: int
+    
+    # Monthly credit allowance
+    monthly_pdf_credits: int  # Monthly PDF credits for this tier
 
 
 # Fallback limits cache (populated from database on startup or tier updates)
@@ -52,14 +53,13 @@ async def refresh_tier_cache(session: AsyncSession) -> None:
         _tier_cache[tier.tier_key] = UserLimits(
             max_pdf_size=tier.max_pdf_size,
             max_csv_size=tier.max_csv_size,
-            max_daily_jobs=tier.max_daily_jobs,
-            max_monthly_jobs=tier.max_monthly_jobs,
-            max_files_per_job=tier.max_files_per_job,
+            max_pdfs_per_run=tier.max_pdfs_per_run,
             can_save_templates=tier.can_save_templates,
             can_use_api=tier.can_use_api,
             priority_processing=tier.priority_processing,
             max_saved_templates=tier.max_saved_templates,
             max_total_storage_mb=tier.max_total_storage_mb,
+            monthly_pdf_credits=tier.monthly_pdf_credits,
         )
 
 
@@ -88,14 +88,13 @@ async def get_tier_limits_from_db(session: AsyncSession, tier_key: str) -> Optio
     return UserLimits(
         max_pdf_size=tier.max_pdf_size,
         max_csv_size=tier.max_csv_size,
-        max_daily_jobs=tier.max_daily_jobs,
-        max_monthly_jobs=tier.max_monthly_jobs,
-        max_files_per_job=tier.max_files_per_job,
+        max_pdfs_per_run=tier.max_pdfs_per_run,
         can_save_templates=tier.can_save_templates,
         can_use_api=tier.can_use_api,
         priority_processing=tier.priority_processing,
         max_saved_templates=tier.max_saved_templates,
         max_total_storage_mb=tier.max_total_storage_mb,
+        monthly_pdf_credits=tier.monthly_pdf_credits,
     )
 
 
@@ -103,14 +102,13 @@ async def get_tier_limits_from_db(session: AsyncSession, tier_key: str) -> Optio
 _FALLBACK_LIMITS = UserLimits(
     max_pdf_size=1 * 1024 * 1024,      # 1 MB (free tier defaults)
     max_csv_size=250 * 1024,           # 250 KB
-    max_daily_jobs=3,
-    max_monthly_jobs=10,
-    max_files_per_job=50,
+    max_pdfs_per_run=50,
     can_save_templates=False,
     can_use_api=False,
     priority_processing=False,
     max_saved_templates=0,
     max_total_storage_mb=0,
+    monthly_pdf_credits=0,  # Free tier typically has no monthly credits
 )
 
 
@@ -146,14 +144,13 @@ def get_user_limits(subscription_tier: str, custom_overrides=None) -> UserLimits
         return UserLimits(
             max_pdf_size=custom_overrides.custom_max_pdf_size or base_limits.max_pdf_size,
             max_csv_size=custom_overrides.custom_max_csv_size or base_limits.max_csv_size,
-            max_daily_jobs=custom_overrides.custom_max_daily_jobs or base_limits.max_daily_jobs,
-            max_monthly_jobs=custom_overrides.custom_max_monthly_jobs or base_limits.max_monthly_jobs,
-            max_files_per_job=custom_overrides.custom_max_files_per_job or base_limits.max_files_per_job,
+            max_pdfs_per_run=custom_overrides.custom_max_pdfs_per_run or base_limits.max_pdfs_per_run,
             can_save_templates=custom_overrides.custom_can_save_templates if custom_overrides.custom_can_save_templates is not None else base_limits.can_save_templates,
             can_use_api=custom_overrides.custom_can_use_api if custom_overrides.custom_can_use_api is not None else base_limits.can_use_api,
             priority_processing=base_limits.priority_processing,  # This remains tier-based for now
             max_saved_templates=base_limits.max_saved_templates,  # This remains tier-based for now
             max_total_storage_mb=base_limits.max_total_storage_mb,  # This remains tier-based for now
+            monthly_pdf_credits=base_limits.monthly_pdf_credits,  # Monthly credits remain tier-based
         )
     
     # Handle dict-style overrides (for admin interfaces)
@@ -161,14 +158,13 @@ def get_user_limits(subscription_tier: str, custom_overrides=None) -> UserLimits
         return UserLimits(
             max_pdf_size=custom_overrides.get('max_pdf_size', base_limits.max_pdf_size),
             max_csv_size=custom_overrides.get('max_csv_size', base_limits.max_csv_size),
-            max_daily_jobs=custom_overrides.get('max_daily_jobs', base_limits.max_daily_jobs),
-            max_monthly_jobs=custom_overrides.get('max_monthly_jobs', base_limits.max_monthly_jobs),
-            max_files_per_job=custom_overrides.get('max_files_per_job', base_limits.max_files_per_job),
+            max_pdfs_per_run=custom_overrides.get('max_pdfs_per_run', base_limits.max_pdfs_per_run),
             can_save_templates=custom_overrides.get('can_save_templates', base_limits.can_save_templates),
             can_use_api=custom_overrides.get('can_use_api', base_limits.can_use_api),
             priority_processing=custom_overrides.get('priority_processing', base_limits.priority_processing),
             max_saved_templates=custom_overrides.get('max_saved_templates', base_limits.max_saved_templates),
             max_total_storage_mb=custom_overrides.get('max_total_storage_mb', base_limits.max_total_storage_mb),
+            monthly_pdf_credits=custom_overrides.get('monthly_pdf_credits', base_limits.monthly_pdf_credits),
         )
     
     return base_limits
@@ -195,14 +191,13 @@ def get_anonymous_user_limits() -> UserLimits:
     return UserLimits(
         max_pdf_size=512 * 1024,           # 512 KB (smaller than free)
         max_csv_size=100 * 1024,           # 100 KB (smaller than free)
-        max_daily_jobs=1,                  # Very limited
-        max_monthly_jobs=3,
-        max_files_per_job=10,              # Small batches only
+        max_pdfs_per_run=10,               # Small batches only
         can_save_templates=False,
         can_use_api=False,
         priority_processing=False,
         max_saved_templates=0,
         max_total_storage_mb=0,
+        monthly_pdf_credits=0,  # Anonymous users have no monthly credits
     )
 
 

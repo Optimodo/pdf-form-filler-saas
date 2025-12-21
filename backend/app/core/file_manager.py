@@ -6,6 +6,7 @@ Handles file storage, naming, organization, and cleanup with user linking.
 import os
 import hashlib
 import shutil
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple
@@ -14,6 +15,8 @@ from sqlalchemy import select
 
 from ..models import User, UploadedFile, ProcessingJob
 from ..database import get_async_session
+
+logger = logging.getLogger(__name__)
 
 
 class FileManager:
@@ -291,16 +294,33 @@ class FileManager:
         csv_file: UploadedFile,
         session_id: str,
         result: dict,
-        processing_ip: Optional[str] = None
+        processing_ip: Optional[str] = None,
+        credit_usage: Optional[dict] = None
     ) -> ProcessingJob:
         """Create a processing job record in the database."""
         
-        # Calculate credits consumed
-        credits_consumed = 0
-        if user:
-            # You can implement credit calculation logic here
-            # For now, let's say 1 credit per successful PDF
-            credits_consumed = result.get('successful_count', 0)
+        # Extract credit usage details
+        if credit_usage:
+            total_credits = credit_usage.get('total_credits_consumed', 0)
+            subscription_credits = credit_usage.get('subscription_credits_used', 0)
+            rollover_credits = credit_usage.get('rollover_credits_used', 0)
+            topup_credits = credit_usage.get('topup_credits_used', 0)
+        else:
+            total_credits = 0
+            subscription_credits = 0
+            rollover_credits = 0
+            topup_credits = 0
+        
+        # Calculate ZIP file size if it exists
+        zip_file_size_mb = None
+        zip_path = result.get('zip_path')
+        if zip_path:
+            try:
+                if os.path.exists(zip_path) and os.path.isfile(zip_path):
+                    zip_size_bytes = os.path.getsize(zip_path)
+                    zip_file_size_mb = zip_size_bytes / (1024 * 1024)  # Convert to MB
+            except Exception as e:
+                logger.warning(f"Could not calculate ZIP file size for {zip_path}: {e}")
         
         job = ProcessingJob(
             user_id=user.id if user else None,
@@ -312,11 +332,15 @@ class FileManager:
             successful_count=result.get('successful_count', 0),
             failed_count=result.get('failed_count', 0),
             processing_time_seconds=str(result.get('processing_time', 0)),
+            file_size_mb=str(zip_file_size_mb) if zip_file_size_mb is not None else None,
             zip_filename=result.get('zip_file'),
             zip_file_path=result.get('zip_path'),
             status='completed' if result.get('success') else 'failed',
             error_message=result.get('error_message'),
-            credits_consumed=credits_consumed,
+            total_credits_consumed=total_credits,
+            subscription_credits_used=subscription_credits,
+            rollover_credits_used=rollover_credits,
+            topup_credits_used=topup_credits,
             session_id=session_id,
             processing_ip=processing_ip,
             completed_at=datetime.now()
@@ -331,6 +355,9 @@ class FileManager:
         template_file.last_used = datetime.now()
         csv_file.usage_count += 1
         csv_file.last_used = datetime.now()
+        
+        # Note: total_pdf_runs is now incremented in apply_credit_usage()
+        # This ensures it's only incremented for authenticated users when credits are applied
         
         await session.commit()
         
