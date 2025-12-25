@@ -308,7 +308,7 @@ function App() {
         <AuthProvider>
           <div className="app">
             <Header />
-            <main className="main-container">
+            <main className="main-container dashboard-main-container">
               <UserDashboard />
             </main>
           </div>
@@ -324,7 +324,7 @@ function App() {
         <AuthProvider>
           <div className="app">
             <Header />
-            <main className="main-container">
+            <main className="main-container dashboard-main-container">
               <ProfileEdit />
             </main>
           </div>

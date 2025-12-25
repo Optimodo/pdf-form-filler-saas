@@ -256,3 +256,7 @@ async def apply_credit_usage(
         f"used_this_month: {user.credits_used_this_month}, "
         f"used_total: {user.credits_used_total}"
     )
+
+
+
+

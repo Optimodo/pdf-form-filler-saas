@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import ProcessingHistory from './ProcessingHistory';
 
 const UserDashboard = () => {
   const { user, isAuthenticated } = useAuth();
@@ -151,18 +152,7 @@ const UserDashboard = () => {
 
         {activeTab === 'history' && (
           <div className="tab-content">
-            <div className="history-placeholder">
-              <div className="placeholder-icon">📋</div>
-              <h3>Processing History</h3>
-              <p>Your PDF processing history will appear here once you start using the service.</p>
-              <p className="placeholder-note">
-                <strong>Coming Soon:</strong> Track all your processed PDFs, download previous results, 
-                and view detailed processing statistics.
-              </p>
-              <button className="btn-primary" onClick={handleBack}>
-                Process Your First PDF
-              </button>
-            </div>
+            <ProcessingHistory />
           </div>
         )}
       </div>

@@ -308,3 +308,6 @@ class ActivityLogger:
 # Singleton instance
 activity_logger = ActivityLogger()
 
+
+
+

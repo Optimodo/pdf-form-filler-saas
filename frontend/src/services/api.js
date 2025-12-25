@@ -352,6 +352,31 @@ class APIService {
   }
 
   /**
+   * Get processing history for current user
+   * @param {number} limit - Maximum number of records to return (default 50)
+   * @returns {Promise} - Processing history data
+   */
+  async getProcessingHistory(limit = 50) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/pdf/processing-history?limit=${limit}`, {
+        method: 'GET',
+        headers: {
+          ...this.getAuthHeaders(),
+        },
+      });
+
+      if (!response.ok) {
+        throw await this.handleApiError(response, 'Failed to get processing history');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Get Processing History Error:', error);
+      throw this.handleNetworkError(error, 'getting processing history');
+    }
+  }
+
+  /**
    * Update user profile information
    * @param {Object} profileData - Profile data to update
    * @returns {Promise} - Updated user data
@@ -538,12 +563,21 @@ class APIService {
   }
 
   /**
-   * Get download URL for a file
+   * Get download URL for a file (admin)
    * @param {string} fileId - File ID
    * @returns {string} - Download URL
    */
   getFileDownloadUrl(fileId) {
     return `${API_BASE_URL}/api/admin/files/${fileId}/download`;
+  }
+
+  /**
+   * Get download URL for a user's own file
+   * @param {string} fileId - File ID
+   * @returns {string} - Download URL
+   */
+  getUserFileDownloadUrl(fileId) {
+    return `${API_BASE_URL}/api/pdf/download-file/${fileId}`;
   }
 
   /**

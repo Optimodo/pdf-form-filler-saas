@@ -147,7 +147,7 @@ async def google_oauth_callback(request: Request, session: AsyncSession = Depend
         from sqlalchemy import select
         from sqlalchemy.orm import selectinload
         import uuid
-        from datetime import datetime
+        from datetime import datetime, timedelta
         
         # Check if user already exists by email
         stmt = select(User).where(User.email == user_email)
@@ -171,6 +171,12 @@ async def google_oauth_callback(request: Request, session: AsyncSession = Depend
                 last_name=last_name,   # From Google profile
                 subscription_tier=default_tier,  # Use default tier from database
                 credits_remaining=0,  # All new users start with 0 top-up credits
+                credits_used_this_month=0,
+                credits_rollover=0,
+                credits_used_total=0,
+                total_pdf_runs=0,
+                is_premium=False,
+                custom_limits_enabled=False,
                 created_at=datetime.now(),
                 updated_at=datetime.now()
             )
@@ -180,12 +186,17 @@ async def google_oauth_callback(request: Request, session: AsyncSession = Depend
             print(f"Created new user with ID: {user.id}")
             
             # Create OAuth account record for new user
+            # Calculate expires_at from expires_in (which is seconds from now)
+            expires_at = None
+            if access_token.get("expires_in"):
+                expires_at = datetime.now() + timedelta(seconds=access_token["expires_in"])
+            
             oauth_account = OAuthAccount(
                 oauth_name="google",
                 account_id=user_id,
                 account_email=user_email,
                 access_token=access_token["access_token"],
-                expires_at=access_token.get("expires_in"),
+                expires_at=expires_at,
                 refresh_token=access_token.get("refresh_token"),
                 user_id=user.id
             )
@@ -205,12 +216,17 @@ async def google_oauth_callback(request: Request, session: AsyncSession = Depend
             
             if not existing_oauth:
                 print("Creating OAuth account record for existing user...")
+                # Calculate expires_at from expires_in (which is seconds from now)
+                expires_at = None
+                if access_token.get("expires_in"):
+                    expires_at = datetime.now() + timedelta(seconds=access_token["expires_in"])
+                
                 oauth_account = OAuthAccount(
                     oauth_name="google",
                     account_id=user_id,
                     account_email=user_email,
                     access_token=access_token["access_token"],
-                    expires_at=access_token.get("expires_in"),
+                    expires_at=expires_at,
                     refresh_token=access_token.get("refresh_token"),
                     user_id=user.id
                 )

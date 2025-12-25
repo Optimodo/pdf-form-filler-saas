@@ -1122,10 +1122,15 @@
   }
 }
 
+/* Override main-container for dashboard/profile pages */
+main.main-container.dashboard-main-container {
+  max-width: 1400px !important;
+}
+
 /* Dashboard Styles */
 .dashboard-container,
 .profile-container {
-  max-width: 1000px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 2rem;
 }

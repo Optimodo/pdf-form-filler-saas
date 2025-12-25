@@ -28,6 +28,20 @@
   --radius-lg: 0.75rem;
   
   --transition: all 0.2s ease-in-out;
+  
+  /* Aliases for backward compatibility (used by component CSS files) */
+  --text-primary: var(--color-text-primary);
+  --text-secondary: var(--color-text-secondary);
+  --text-muted: var(--color-text-muted);
+  --bg-primary: var(--color-bg-primary);
+  --bg-secondary: var(--color-bg-secondary);
+  --bg-tertiary: var(--color-bg-tertiary);
+  --border-color: var(--color-border);
+  --border-hover: var(--color-border-hover);
+  --primary-color: var(--color-accent);
+  --primary-color-hover: var(--color-accent-hover);
+  --error-color: var(--color-error);
+  --card-bg: var(--color-bg-secondary);
 }
 
 [data-theme="dark"] {
@@ -52,6 +66,20 @@
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+  
+  /* Aliases for backward compatibility (dark theme) */
+  --text-primary: var(--color-text-primary);
+  --text-secondary: var(--color-text-secondary);
+  --text-muted: var(--color-text-muted);
+  --bg-primary: var(--color-bg-primary);
+  --bg-secondary: var(--color-bg-secondary);
+  --bg-tertiary: var(--color-bg-tertiary);
+  --border-color: var(--color-border);
+  --border-hover: var(--color-border-hover);
+  --primary-color: var(--color-accent);
+  --primary-color-hover: var(--color-accent-hover);
+  --error-color: var(--color-error);
+  --card-bg: var(--color-bg-secondary);
 }
 
 /* Base Styles */

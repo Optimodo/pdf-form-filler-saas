@@ -23,9 +23,10 @@ from ..core.user_limits import get_user_limits_from_user, get_anonymous_user_lim
 from ..core.file_manager import file_manager
 from ..core.activity_logger import activity_logger
 from ..auth import current_active_user
-from ..models import User
+from ..models import User, ProcessingJob, UploadedFile
 from ..database import get_async_session
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, desc
 
 router = APIRouter(prefix="/api/pdf", tags=["PDF Processing"])
 
@@ -582,11 +583,24 @@ async def get_user_processing_history(
         limit: Maximum number of records to return (default 50)
     """
     try:
-        jobs = await file_manager.get_user_processing_history(session, current_user, limit)
+        from sqlalchemy.orm import selectinload
+        
+        # Get jobs with file relationships loaded
+        jobs_result = await session.execute(
+            select(ProcessingJob)
+            .where(ProcessingJob.user_id == current_user.id)
+            .options(
+                selectinload(ProcessingJob.template_file),
+                selectinload(ProcessingJob.csv_file)
+            )
+            .order_by(desc(ProcessingJob.created_at))
+            .limit(limit)
+        )
+        jobs = jobs_result.scalars().all()
         
         result = []
         for job in jobs:
-            result.append({
+            job_data = {
                 "id": str(job.id),
                 "session_id": job.session_id,
                 "template_filename": job.template_filename,
@@ -594,7 +608,6 @@ async def get_user_processing_history(
                 "pdf_count": job.pdf_count,
                 "successful_count": job.successful_count,
                 "failed_count": job.failed_count,
-                "processing_time_seconds": job.processing_time_seconds,
                 "zip_filename": job.zip_filename,
                 "status": job.status,
                 "total_credits_consumed": job.total_credits_consumed,
@@ -602,8 +615,30 @@ async def get_user_processing_history(
                 "rollover_credits_used": job.rollover_credits_used,
                 "topup_credits_used": job.topup_credits_used,
                 "created_at": job.created_at.isoformat(),
-                "completed_at": job.completed_at.isoformat() if job.completed_at else None
-            })
+                "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+                "template_file": None,
+                "csv_file": None
+            }
+            
+            # Add template file info if available
+            if job.template_file:
+                job_data["template_file"] = {
+                    "id": str(job.template_file.id),
+                    "original_filename": job.template_file.original_filename,
+                    "stored_filename": job.template_file.stored_filename,
+                    "file_path": job.template_file.file_path
+                }
+            
+            # Add CSV file info if available
+            if job.csv_file:
+                job_data["csv_file"] = {
+                    "id": str(job.csv_file.id),
+                    "original_filename": job.csv_file.original_filename,
+                    "stored_filename": job.csv_file.stored_filename,
+                    "file_path": job.csv_file.file_path
+                }
+            
+            result.append(job_data)
         
         return {
             "processing_history": result,
@@ -613,4 +648,55 @@ async def get_user_processing_history(
     except Exception as e:
         logger.error(f"Error getting processing history: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get processing history: {str(e)}")
+
+
+@router.get("/download-file/{file_id}")
+async def download_user_file(
+    file_id: str,
+    current_user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """
+    Download a user's uploaded file (template or CSV) with original filename.
+    
+    The file is served with the original filename without renaming it on the server.
+    """
+    try:
+        from uuid import UUID
+        
+        # Validate file_id is a valid UUID
+        try:
+            file_uuid = UUID(file_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid file ID")
+        
+        # Get the file record
+        result = await session.execute(
+            select(UploadedFile).where(UploadedFile.id == file_uuid)
+        )
+        file = result.scalar_one_or_none()
+        
+        if not file:
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        # Verify the file belongs to the current user
+        if file.user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        # Check if file exists on disk
+        if not os.path.exists(file.file_path):
+            raise HTTPException(status_code=404, detail="File not found on disk")
+        
+        # Return the file with original filename (FileResponse handles this)
+        return FileResponse(
+            path=file.file_path,
+            filename=file.original_filename,  # This sets the download filename without renaming on server
+            media_type='application/octet-stream'
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error downloading file: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to download file: {str(e)}")
 

@@ -18,3 +18,6 @@ function InlineMessage({ message, type = 'success', onClose }) {
 
 export default InlineMessage;
 
+
+
+
