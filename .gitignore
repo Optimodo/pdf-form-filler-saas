@@ -84,3 +84,6 @@ fix_database*.py
 
 # Archive desktop application (not needed in production)
 archive-desktop-app/
+
+# Development notes (local documentation)
+dev_notes/
