@@ -3,7 +3,7 @@
  */
 import { getUserFriendlyError, isNetworkError, getNetworkErrorMessage } from '../utils/errorMessages';
 
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://freaked-out.net/api';
 
 class APIService {
   /**
@@ -48,7 +48,7 @@ class APIService {
       formData.append('template', templateFile);
       formData.append('csv_data', csvFile);
       
-      const response = await fetch(`${API_BASE_URL}/api/pdf/process-batch`, {
+      const response = await fetch(`${API_BASE_URL}/pdf/process-batch`, {
         method: 'POST',
         headers: {
           ...this.getAuthHeaders(),
@@ -77,7 +77,7 @@ class APIService {
    */
   async getProgress(jobId) {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/pdf/progress/${encodeURIComponent(jobId)}`, {
+      const response = await fetch(`${API_BASE_URL}/pdf/progress/${encodeURIComponent(jobId)}`, {
         headers: {
           ...this.getAuthHeaders(),
         },
@@ -132,7 +132,7 @@ class APIService {
   async downloadZIP(zipFilename) {
     try {
       const response = await fetch(
-        `${API_BASE_URL}/api/pdf/download-zip/${encodeURIComponent(zipFilename)}`,
+        `${API_BASE_URL}/pdf/download-zip/${encodeURIComponent(zipFilename)}`,
         {
           headers: {
             ...this.getAuthHeaders(),
@@ -184,7 +184,7 @@ class APIService {
    */
   async register(userData) {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+      const response = await fetch(`${API_BASE_URL}/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -216,7 +216,7 @@ class APIService {
       formData.append('username', email); // FastAPI-Users expects 'username' field
       formData.append('password', password);
 
-      const response = await fetch(`${API_BASE_URL}/api/auth/jwt/login`, {
+      const response = await fetch(`${API_BASE_URL}/auth/jwt/login`, {
         method: 'POST',
         body: formData,
       });
@@ -247,7 +247,7 @@ class APIService {
       const token = localStorage.getItem('access_token');
       
       if (token) {
-        await fetch(`${API_BASE_URL}/api/auth/jwt/logout`, {
+        await fetch(`${API_BASE_URL}/auth/jwt/logout`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -279,7 +279,7 @@ class APIService {
         throw new Error('No authentication token found');
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+      const response = await fetch(`${API_BASE_URL}/auth/me`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -325,7 +325,7 @@ class APIService {
    * @returns {string} - Google OAuth URL
    */
   getGoogleOAuthUrl() {
-    return `${API_BASE_URL}/api/auth/google/authorize`;
+    return `${API_BASE_URL}/auth/google/authorize`;
   }
 
   /**
@@ -334,7 +334,7 @@ class APIService {
    */
   async getUserLimits() {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/pdf/user-limits`, {
+      const response = await fetch(`${API_BASE_URL}/pdf/user-limits`, {
         headers: {
           ...this.getAuthHeaders(),
         },
@@ -358,7 +358,7 @@ class APIService {
    */
   async getProcessingHistory(limit = 50) {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/pdf/processing-history?limit=${limit}`, {
+      const response = await fetch(`${API_BASE_URL}/pdf/processing-history?limit=${limit}`, {
         method: 'GET',
         headers: {
           ...this.getAuthHeaders(),
@@ -383,7 +383,7 @@ class APIService {
    */
   async updateProfile(profileData) {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/users/me`, {
+      const response = await fetch(`${API_BASE_URL}/users/me`, {
         method: 'PATCH',
         headers: {
           ...this.getAuthHeaders(),
@@ -411,7 +411,7 @@ class APIService {
    */
   async changePassword(passwordData) {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/users/me`, {
+      const response = await fetch(`${API_BASE_URL}/users/me`, {
         method: 'PATCH',
         headers: {
           ...this.getAuthHeaders(),
@@ -453,7 +453,7 @@ class APIService {
    */
   async getAdminDashboardStats() {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/admin/dashboard/stats`, {
+      const response = await fetch(`${API_BASE_URL}/admin/dashboard/stats`, {
         headers: {
           ...this.getAuthHeaders(),
         },
@@ -491,7 +491,7 @@ class APIService {
       if (params.sort_by) queryParams.append('sort_by', params.sort_by);
       if (params.sort_order) queryParams.append('sort_order', params.sort_order);
 
-      const url = `${API_BASE_URL}/api/admin/users${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+      const url = `${API_BASE_URL}/admin/users${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
       const response = await fetch(url, {
         headers: {
           ...this.getAuthHeaders(),
@@ -516,7 +516,7 @@ class APIService {
    */
   async getUserDetails(userId) {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/admin/users/${userId}`, {
+      const response = await fetch(`${API_BASE_URL}/admin/users/${userId}`, {
         headers: {
           ...this.getAuthHeaders(),
         },
@@ -543,7 +543,7 @@ class APIService {
   async getUserJobs(userId, page = 1, limit = 10) {
     try {
       const response = await fetch(
-        `${API_BASE_URL}/api/admin/users/${userId}/jobs?page=${page}&limit=${limit}`,
+        `${API_BASE_URL}/admin/users/${userId}/jobs?page=${page}&limit=${limit}`,
         {
           headers: {
             ...this.getAuthHeaders(),
@@ -568,7 +568,7 @@ class APIService {
    * @returns {string} - Download URL
    */
   getFileDownloadUrl(fileId) {
-    return `${API_BASE_URL}/api/admin/files/${fileId}/download`;
+    return `${API_BASE_URL}/admin/files/${fileId}/download`;
   }
 
   /**
@@ -577,7 +577,7 @@ class APIService {
    * @returns {string} - Download URL
    */
   getUserFileDownloadUrl(fileId) {
-    return `${API_BASE_URL}/api/pdf/download-file/${fileId}`;
+    return `${API_BASE_URL}/pdf/download-file/${fileId}`;
   }
 
   /**
@@ -586,7 +586,7 @@ class APIService {
    * @returns {string} - Download URL
    */
   getJobZipDownloadUrl(jobId) {
-    return `${API_BASE_URL}/api/admin/jobs/${jobId}/download-zip`;
+    return `${API_BASE_URL}/admin/jobs/${jobId}/download-zip`;
   }
 
   /**
@@ -598,7 +598,7 @@ class APIService {
   async updateUserSubscription(userId, tier) {
     try {
       const response = await fetch(
-        `${API_BASE_URL}/api/admin/users/${userId}/subscription?subscription_tier=${tier}`,
+        `${API_BASE_URL}/admin/users/${userId}/subscription?subscription_tier=${tier}`,
         {
           method: 'PATCH',
           headers: {
@@ -628,7 +628,7 @@ class APIService {
   async setUserCustomLimits(userId, customLimits, reason) {
     try {
       const response = await fetch(
-        `${API_BASE_URL}/api/admin/users/${userId}/custom-limits?reason=${encodeURIComponent(reason)}`,
+        `${API_BASE_URL}/admin/users/${userId}/custom-limits?reason=${encodeURIComponent(reason)}`,
         {
           method: 'POST',
           headers: {
@@ -656,7 +656,7 @@ class APIService {
    */
   async listSubscriptionTiers() {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/admin/tiers`, {
+      const response = await fetch(`${API_BASE_URL}/admin/tiers`, {
         method: 'GET',
         headers: {
           ...this.getAuthHeaders(),
@@ -681,7 +681,7 @@ class APIService {
    */
   async getSubscriptionTier(tierId) {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/admin/tiers/${tierId}`, {
+      const response = await fetch(`${API_BASE_URL}/admin/tiers/${tierId}`, {
         method: 'GET',
         headers: {
           ...this.getAuthHeaders(),
@@ -706,7 +706,7 @@ class APIService {
    */
   async createSubscriptionTier(tierData) {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/admin/tiers`, {
+      const response = await fetch(`${API_BASE_URL}/admin/tiers`, {
         method: 'POST',
         headers: {
           ...this.getAuthHeaders(),
@@ -734,7 +734,7 @@ class APIService {
    */
   async updateSubscriptionTier(tierId, tierData) {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/admin/tiers/${tierId}`, {
+      const response = await fetch(`${API_BASE_URL}/admin/tiers/${tierId}`, {
         method: 'PATCH',
         headers: {
           ...this.getAuthHeaders(),
@@ -761,7 +761,7 @@ class APIService {
    */
   async deleteSubscriptionTier(tierId) {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/admin/tiers/${tierId}`, {
+      const response = await fetch(`${API_BASE_URL}/admin/tiers/${tierId}`, {
         method: 'DELETE',
         headers: {
           ...this.getAuthHeaders(),
@@ -789,7 +789,7 @@ class APIService {
   async getUserActivityLogs(userId, limit = 100, skip = 0) {
     try {
       const response = await fetch(
-        `${API_BASE_URL}/api/admin/users/${userId}/activity-logs?limit=${limit}&skip=${skip}`,
+        `${API_BASE_URL}/admin/users/${userId}/activity-logs?limit=${limit}&skip=${skip}`,
         {
           headers: {
             ...this.getAuthHeaders(),
@@ -831,7 +831,7 @@ class APIService {
         params.append('user_tier', userTier);
       }
       
-      const response = await fetch(`${API_BASE_URL}/api/admin/jobs?${params.toString()}`, {
+      const response = await fetch(`${API_BASE_URL}/admin/jobs?${params.toString()}`, {
         method: 'GET',
         headers: {
           ...this.getAuthHeaders(),
@@ -851,7 +851,7 @@ class APIService {
 
   async getSystemActivityLogs(category = null, activityType = null, limit = 100, skip = 0) {
     try {
-      let url = `${API_BASE_URL}/api/admin/activity-logs?limit=${limit}&skip=${skip}`;
+      let url = `${API_BASE_URL}/admin/activity-logs?limit=${limit}&skip=${skip}`;
       if (category) {
         url += `&category=${encodeURIComponent(category)}`;
       }
@@ -884,7 +884,7 @@ class APIService {
   async removeUserCustomLimits(userId) {
     try {
       const response = await fetch(
-        `${API_BASE_URL}/api/admin/users/${userId}/custom-limits`,
+        `${API_BASE_URL}/admin/users/${userId}/custom-limits`,
         {
           method: 'DELETE',
           headers: {
@@ -913,7 +913,7 @@ class APIService {
   async updateUserCredits(userId, creditsData) {
     try {
       const response = await fetch(
-        `${API_BASE_URL}/api/admin/users/${userId}/credits`,
+        `${API_BASE_URL}/admin/users/${userId}/credits`,
         {
           method: 'PATCH',
           headers: {
@@ -948,7 +948,7 @@ class APIService {
       if (reason) queryParams.append('reason', reason);
 
       const response = await fetch(
-        `${API_BASE_URL}/api/admin/users/${userId}/apply-template?${queryParams.toString()}`,
+        `${API_BASE_URL}/admin/users/${userId}/apply-template?${queryParams.toString()}`,
         {
           method: 'POST',
           headers: {
@@ -974,7 +974,7 @@ class APIService {
    */
   async getAvailableTemplates() {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/admin/templates/available`, {
+      const response = await fetch(`${API_BASE_URL}/admin/templates/available`, {
         headers: {
           ...this.getAuthHeaders(),
         },
@@ -1000,7 +1000,7 @@ class APIService {
   async toggleUserActive(userId, isActive) {
     try {
       const response = await fetch(
-        `${API_BASE_URL}/api/admin/users/${userId}/activate?is_active=${isActive}`,
+        `${API_BASE_URL}/admin/users/${userId}/activate?is_active=${isActive}`,
         {
           method: 'PATCH',
           headers: {
